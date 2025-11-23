@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>SALESPULSE – SOH Upload</title>
+
+    <!-- Bootstrap -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"/>
+
+    <!-- Select2 + Bootstrap 5 theme -->
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet"/>
+
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" crossorigin="anonymous"/>
+    <link rel="icon" href="./static/img/favicon.ico">
+
+    <!-- Sidebar -->
+    <link rel="stylesheet" href="./static/css/sidebar.css">
+    <script type="text/javascript" src="./static/js/app.js" defer></script> 
+
+  <style>
+    body { background: #1f1c2e; }
+    .wrapper {
+      box-sizing: border-box;
+      background-color: #2E2B41;
+      width: 95%;
+      max-width: 760px;
+      padding: 24px;
+      border-radius: 20px;
+      box-shadow: 5px 5px 15px rgba(0,0,0,0.3);
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      margin-top: 40px;
+      margin-bottom: 120px;
+    }
+    .main-div {
+      display: flex; justify-content: center; align-items: flex-start;
+      min-height: 100vh; padding-bottom: 80px;
+    }
+    h3, h5, label { color: #fff; }
+    .button { background-color: #8672FF; color: #fff; }
+    .footer {
+      position: fixed; bottom: 0; left: 0; width: 100%;
+      background-color: #8672FF; color: #fff; text-align: left;
+      padding: 10px 20px; box-shadow: 0 -2px 10px #8672FF; z-index: 1000;
+      font-size: 14px;
+    }
+    .select2-container--bootstrap-5 .select2-selection { min-height: 38px; }
+    .text-muted-lite { color: #ddd; }
+    .card-dark { background: #2E2B41; border: 1px solid #3b3656; }
+  </style>
+</head>
+<body>
+  <div class="d-flex">
+    {% include 'sidebar.html' %}
+    <div class="flex-grow-1 d-flex flex-column">
+      <main class="main-div">
+      <div class="wrapper">
+        <div class="mb-3 text-center">
+          <h3 class="mb-0">Stock On Hand – Upload</h3>
+          <small class="text-muted-lite">Select brand(s) and customer(s) to download templates and upload SOH snapshots.</small>
+        </div>
+
+        <!-- Controls -->
+        <div class="card card-dark mb-3">
+          <div class="card-body">
+            <div class="row g-3">
+              <!-- <div class="col-md-6">
+                  <label class="form-label">Brand  <span class="text-danger" id="reqUser">*</span></label>
+                  <select id="brandSelect" class="form-select"></select>
+                  <div class="form-text text-muted-lite">Select 1 brand.</div>
+              </div> -->
+              <div class="col-md-6">
+                  <label class="form-label">Customer <span class="text-danger" id="reqUser">*</span></label>
+                  <select id="customerSelect" class="form-select"></select>
+                  <div class="form-text text-muted-lite">Select 1 Customer.</div>
+              </div>
+
+              <div class="col-md-4">
+                  <label class="form-label">Snapshot Type</label>
+                  <select id="snapshotType" class="form-select">
+                  <option value="Initial">Initial</option>
+                  <option value="Supersede">Supersede</option>
+                  </select>
+              </div>
+
+              <div class="col-md-4">
+                  <label class="form-label">Uploaded By</label>
+                  <input id="createdBy" class="form-control" value="{{session['username']}}" disabled/>
+              </div>
+
+              <div class="col-md-4">
+                  <label class="form-label">SOH Date <span class="text-danger" id="reqUser">*</span></label>
+                  <input id="soh_date" class="form-control" type="date" required  max=""/>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="d-grid gap-2 d-md-flex justify-content-md-end" style="flex-direction: column;">
+          <button id="downloadBtn" class="btn button">
+              <i class="fa-solid fa-circle-down me-2"></i>Download Excel Template
+          </button>
+          <button id="uploadBtn" class="btn btn-success">
+              <i class="fa-solid fa-cloud-arrow-up me-2"></i>Upload SOH File
+          </button>
+        </div>
+
+        <!-- Status -->
+        <div id="statusArea" class="mt-3"></div>
+
+        <!-- Hidden upload form -->
+        <form id="uploadForm" action="/soh/upload" method="post" enctype="multipart/form-data" style="display:none">
+          <input type="hidden" name="customer_id" id="customer_id">
+          <!-- <input type="hidden" name="brand" id="brand"> -->
+          <input type="hidden" name="created_by" id="created_by">
+          <input type="hidden" name="snapshot_type" id="snapshot_type">
+          <input type="hidden" name="sohDate" id="sohDate">
+          <input type="file" name="file" id="fileInput" accept=".xlsx,.xls,.csv">
+        </form>
+      </div>
+
+      <footer class="footer">@Modern Electronics</footer>
+      </main>
+    </div>
+  </div>
+
+  <!-- jQuery (needed by Select2) -->
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <!-- Bootstrap bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- Select2 -->
+  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+  <script>
+    //const $brands    = $('#brandSelect');
+    const $customers = $('#customerSelect');
+    const $date      = $('#soh_date');
+    const $download  = $('#downloadBtn');
+    const $upload    = $('#uploadBtn');
+    const $status    = $('#statusArea');
+
+
+    const today = new Date().toISOString().split('T')[0]; // yyyy-mm-dd
+    $('#soh_date').attr('max', today);
+
+
+    // --- enable/disable logic ---
+    function hasRequired() {
+      return Boolean(($customers.val() || '').trim() && ($date.val() || '').trim());
+    }
+    function updateButtons() {
+      const ok = hasRequired();
+      $download.prop('disabled', !ok);
+      $upload.prop('disabled',  !ok);
+    }
+
+    // Keep buttons in sync with selections
+    //$brands.on('change.select2', updateButtons);
+    $customers.on('change.select2', updateButtons);
+    $date.on('input change', updateButtons);
+
+    // Select2 init (multi for both selects)
+    function initSelect2() {
+      //$brands.select2({
+      //  theme: 'bootstrap-5',
+      //  placeholder: 'Select brand(s)',
+      //  width: '100%',
+      //  allowClear: true,
+      //  //multiple: false,
+      //  closeOnSelect: true
+      //});
+      $customers.select2({
+        theme: 'bootstrap-5',
+        placeholder: 'Select customer(s)',
+        width: '100%',
+        allowClear: true,
+        //multiple: false,
+        closeOnSelect: true
+      });
+    }
+
+    function showStatus(type, html) {
+      $status.html(
+        `<div class="alert alert-${type} alert-dismissible fade show" role="alert">
+          ${html}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>`
+      );
+    }
+
+    // Populate choices from backend
+    async function loadChoices() {
+      try {
+        const res = await fetch('/soh/choices');
+        if (!res.ok) throw new Error('Failed to load choices');
+        const data = await res.json();
+
+        // Brands: [{name}]
+        //$brands.empty();
+        //(data.brands || []).forEach(b => {
+        //  $brands.append(new Option(b.name, b.name));
+        //});
+
+        // Customers: [{id, code, name, level}]
+        $customers.empty();
+        (data.customers || []).forEach(c => {
+          const label = `${c.name} (${c.code})${c.level ? ' – ' + c.level : ''}`;
+          $customers.append(new Option(label, c.id));
+        });
+
+        // Refresh Select2 UI
+        // $brands.trigger('change');
+        $customers.trigger('change');
+      } catch (e) {
+        console.error(e);
+        showStatus('danger', 'Could not load brands/customers. Please refresh.');
+      }
+    }
+
+    // Download SOH templates for each (brand × customer) selection
+    function handleDownload() {
+      // const brand = $brands.val() || null;
+      const cust  = $customers.val() || null;
+      const date  = $date.val() || null;
+      if (!cust || !date) {
+        showStatus('warning', 'Please customer, and SOH-date.');
+        return;
+      }
+      // brand is optional; if none selected, still download a generic template per customer
+      //const brandList = brands.length ? brands : [null];
+
+      const url = `/soh/template?customer_id=${encodeURIComponent(cust)}`
+      window.open(url, '_blank'); // triggers the download
+      showStatus('info', `Triggered ${count} template download(s).`);
+    }
+
+    // Prepare upload (exactly one customer; 0–1 brand)
+    function handleUploadClick() {
+      const cust = $customers.val() || null;
+      const date = $date.val() || null;
+      if (!cust || !date) {
+        showStatus('warning', 'Please select customer and date.');
+        return;
+      }
+      $('#customer_id').val(cust);
+      $('#sohDate').val(date);
+      $('#created_by').val($('#createdBy').val() || '');
+      $('#snapshot_type').val($('#snapshotType').val() || 'Initial');
+      $('#fileInput').click();
+    }
+
+    async function handleFileChosen(ev) {
+      const file = ev.target.files[0];
+      if (!file) return;
+      const form = document.getElementById('uploadForm');
+      const fd = new FormData(form);
+      $upload.prop('disabled', true); $download.prop('disabled', true);
+      try {
+        const res  = await fetch(form.action, { method: 'POST', body: fd });
+        const json = await res.json();
+        if (!res.ok || !json.ok) {
+          showStatus('danger', `<strong>Upload failed:</strong> ${(json && json.error) ? json.error : 'Upload failed'}`);
+        } else {
+          showStatus('success',
+            `SOH Upload <strong>#${json.soh_upload_id}</strong> succeeded for <strong>${json.date}</strong>. ` +
+            `Inserted <strong>${json.inserted}</strong> rows; deactivated <strong>${json.deactivated}</strong>.`
+          );
+        }
+      } catch (e) {
+        console.error(e);
+        showStatus('danger', 'Unexpected error while uploading.');
+      } finally {
+        ev.target.value = '';
+        $upload.prop('disabled', false); $download.prop('disabled', false);
+      }
+    }
+
+    $(async function () {
+      initSelect2();
+      await loadChoices();
+      updateButtons();
+      $('#downloadBtn').on('click', handleDownload);
+      $('#uploadBtn').on('click', handleUploadClick);
+      $('#fileInput').on('change', handleFileChosen);
+    });
+
+  </script>
+</body>
+</html>

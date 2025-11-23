@@ -1,0 +1,520 @@
+{% extends "base.html" %}
+{% block title %}User Access Control{% endblock %}
+
+{% block styles %}
+
+:root{
+  --bg:#232334; --panel:#2b2a42; --muted:rgb(255 255 255 / 75%); --border:#3b3a55; --accent:#8672FF;
+}
+div, h3,h4,h5{color: white}
+body{ 
+  background:var(--bg); 
+  color:#fff !important; }
+
+.page-wrap{ padding:16px 20px 96px; }
+
+/* Cards */
+.card-dim {
+  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.025));
+  border:1px solid var(--border); border-radius:16px;
+  box-shadow: 0 6px 26px rgba(0,0,0,.22);
+}
+.card-dim .card-header{ background:transparent; border-bottom:1px dashed var(--border); }
+.card-dim .card-footer{ background:transparent; border-top:1px dashed var(--border); }
+
+/* Select2 dark */
+.select2-container .select2-selection--single{
+  background:#1f1e31; border:1px solid var(--border); height: 38px;
+}
+.select2-container--default .select2-selection--single .select2-selection__rendered{ color:#e9ecff; line-height:38px; }
+.select2-container--default .select2-selection--single .select2-selection__arrow{ height:38px; }
+.select2-dropdown{ background:#1f1e31; border-color:var(--border); color:#fff; }
+.select2-results__option--selected{ background:#2b2a42 !important; }
+.select2-search__field{ color:#e9ecff; }
+
+/* Buckets (left/right columns for each entity) */
+.bucket{
+  display:flex; gap:16px; flex-wrap:wrap;
+}
+.bucket-col{
+  flex:1 1 360px; min-width: 300px;
+}
+.bucket-col .head{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  margin-bottom:8px;
+}
+.bucket-col .head h6{ margin:0; font-weight:600; }
+.bucket-col .head .mini{ color:var(--muted); font-size:.85rem; }
+
+.search-input{
+  background:#1f1e31; border:1px solid var(--border); color:#fff;
+  border-radius:10px; padding:6px 10px; width:100%; margin-bottom:8px;
+}
+
+/* List surface */
+.dropzone{
+  background:#1f1e31; border:1px dashed var(--border); border-radius:12px;
+  min-height:320px; max-height:420px; overflow:auto; padding:8px;
+}
+.dropzone.drag-over{ border-color:var(--accent); box-shadow:0 0 0 3px rgba(134,114,255,.18) inset; }
+
+.item{
+  background:#2c2946; border:1px solid #3e3b63; border-radius:10px;
+  padding:8px 10px; margin-bottom:8px; cursor:grab; user-select:none;
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+}
+.item:hover{ border-color:var(--accent); }
+.item.dragging{ opacity:.6; }
+
+.item .meta{ font-size:.85rem; color:#cfd3e1; }
+.item .id{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color:#aab0c0; }
+
+/* Counters */
+.counter{ font-size:.9rem; color:#cfd3e1; }
+
+/* Footer actions */
+.btn-ghost{
+  background:transparent; border:1px solid var(--border); color:#e9ecff;
+}
+.btn-ghost:hover{ border-color:var(--accent); color:#fff; }
+
+/* Sticky left panel on wide screens */
+@media (min-width: 1200px){
+  .sticky-col{ position: sticky; top: 16px; align-self:flex-start; }
+}
+
+.dropzone.reject{ border-color:#ff6b6b !important; }
+@keyframes shake{ 10%,90%{transform:translateX(-1px)} 20%,80%{transform:translateX(2px)}
+30%,50%,70%{transform:translateX(-4px)} 40%,60%{transform:translateX(4px)} }
+.dropzone.reject{ animation:shake .25s linear; }
+
+{% endblock %}
+
+{% block content %}
+<div class="page-wrap container-xxl">
+  <div class="row g-4">
+    <!-- LEFT: user picker -->
+    <div class="col-12 col-xl-3">
+      <div class="card card-dim sticky-col">
+        <div class="card-header">
+          <h5 class="mb-0">Select User</h5>
+          <div class=" small">Search by username, email, or role</div>
+        </div>
+        <div class="card-body">
+          <label class="form-label">User</label>
+          <select id="userSelect" class="form-select" style="width:100%" data-placeholder="Start typing to search…">
+            <option></option>
+            {# Server: render users here with precomputed access IDs in data- attributes #}
+            {% if users %}
+              {% for u in users %}
+                <option
+                  value="{{ u.UserID }}"
+                  data-email="{{ u.Email }}"
+                  data-role="{{ u.Role }}"
+                  data-brands="{{ u.brand_ids|join(',') if u.brand_ids }}"
+                  data-customers="{{ u.customer_ids|join(',') if u.customer_ids }}"
+                  data-categories="{{ u.category_ids|join(',') if u.category_ids }}"
+                >
+                  {{ u.Username }} — {{ u.Email }} — {{ u.Role|replace('_',' ') }}
+                </option>
+              {% endfor %}
+            {% endif %}
+          </select>
+
+          <hr class="link-light">
+          <div class="small">
+            Drag items between <strong>Assigned</strong> and <strong>Available</strong> to update access.
+          </div>
+        </div>
+        <div class="card-footer d-flex justify-content-between align-items-center">
+          <span id="saveStatus" class="small badge">Idle</span>
+          <div class="d-flex gap-2">
+            <button type="button" id="btnClearAll" class="btn btn-ghost btn-sm">
+              <i class="fa-regular fa-trash-can me-1"></i>Clear all
+            </button>
+            <button type="button" id="btnSave" class="btn btn-primary btn-sm" style="background:var(--accent); border-color:var(--accent);">
+              Save changes
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: three access blocks -->
+    <div class="col-12 col-xl-9">
+      <!-- BRANDS -->
+      <div class="card card-dim mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <div>
+            <h5 class="mb-0">Brands</h5>
+            <div class="small text-muted">Assign by brand name</div>
+          </div>
+          <div class="counter"><span id="brandAssignedCount">0</span> assigned • <span id="brandAvailableCount">0</span> available</div>
+        </div>
+        <div class="card-body">
+          <div class="bucket">
+            <div class="bucket-col">
+              <div class="head">
+                <h6>Assigned</h6>
+                <div class="mini"><a href="#" class="link-light" data-moveall="brand:available→brand:assigned">Move all →</a></div>
+              </div>
+              <input class="search-input" placeholder="Filter assigned…" data-filter="brand:assigned">
+              <div id="brandAssigned" class="dropzone" data-accept="brand" aria-label="Brands assigned"></div>
+            </div>
+            <div class="bucket-col">
+              <div class="head">
+                <h6>Available</h6>
+                <div class="mini"><a href="#" class="link-light" data-moveall="brand:assigned→brand:available">← Clear all</a></div>
+              </div>
+              <input class="search-input" placeholder="Filter available…" data-filter="brand:available">
+              <div id="brandAvailable" class="dropzone" data-accept="brand" aria-label="Brands available"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CUSTOMERS -->
+      <div class="card card-dim mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <div>
+            <h5 class="mb-0">Customers</h5>
+            <div class="small text-muted">Shown as <em>Code — Name</em></div>
+          </div>
+          <div class="counter"><span id="custAssignedCount">0</span> assigned • <span id="custAvailableCount">0</span> available</div>
+        </div>
+        <div class="card-body">
+          <div class="bucket">
+            <div class="bucket-col">
+              <div class="head">
+                <h6>Assigned</h6>
+                <div class="mini"><a href="#" class="link-light" data-moveall="cust:available→cust:assigned">Move all →</a></div>
+              </div>
+              <input class="search-input" placeholder="Search assigned…" data-filter="cust:assigned">
+              <div id="custAssigned" class="dropzone" data-accept="cust" aria-label="Customers assigned"></div>
+            </div>
+            <div class="bucket-col">
+              <div class="head">
+                <h6>Available</h6>
+                <div class="mini"><a href="#" class="link-light" data-moveall="cust:assigned→cust:available">← Clear all</a></div>
+              </div>
+              <input class="search-input" placeholder="Search available…" data-filter="cust:available">
+              <div id="custAvailable" class="dropzone" data-accept="cust" aria-label="Customers available"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CATEGORIES -->
+      <div class="card card-dim">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <div>
+            <h5 class="mb-0">Categories</h5>
+            <div class="small text-muted">Shown as <em>CATNAME — CatDesc</em></div>
+          </div>
+          <div class="counter"><span id="catAssignedCount">0</span> assigned • <span id="catAvailableCount">0</span> available</div>
+        </div>
+        <div class="card-body">
+          <div class="bucket">
+            <div class="bucket-col">
+              <div class="head">
+                <h6>Assigned</h6>
+                <div class="mini"><a href="#" class="link-light" data-moveall="cat:available→cat:assigned">Move all →</a></div>
+              </div>
+              <input class="search-input" placeholder="Search assigned…" data-filter="cat:assigned">
+              <div id="catAssigned" class="dropzone" data-accept="cat"  aria-label="Categories assigned"></div>
+            </div>
+            <div class="bucket-col">
+              <div class="head">
+                <h6>Available</h6>
+                <div class="mini"><a href="#" class="link-light" data-moveall="cat:assigned→cat:available">← Clear all</a></div>
+              </div>
+              <input class="search-input" placeholder="Search available…" data-filter="cat:available">
+              <div id="catAvailable" class="dropzone" data-accept="cat"  aria-label="Categories available"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div> <!-- /RIGHT -->
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.min.js" integrity="sha384-0pUGZvbkm6XF6gxjEnlmuGrJXVbNuzT9qBBavbLwCsOGabYfZo0T0to5eqruptLy" crossorigin="anonymous"></script>
+<!-- jQuery (for Select2 and simpler DOM ops) -->
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<!-- Select2 JS -->
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+<script>
+  const ALL_BRANDS     = JSON.parse('{{ brands|tojson }}');
+  const ALL_CUSTOMERS  = JSON.parse('{{ customers|tojson }}');
+  const ALL_CATEGORIES = JSON.parse('{{ categories|tojson }}');
+
+  // ======= Helpers =======
+  const qs = (sel,ctx=document)=>ctx.querySelector(sel);
+  const qsa = (sel,ctx=document)=>Array.from(ctx.querySelectorAll(sel));
+
+  // track the kind currently being dragged
+  let currentDragGroup = null;
+
+  // id+label+group ('brand' | 'cust' | 'cat')
+  function makeItem(id, label, group){
+    const el = document.createElement('div');
+    el.className = 'item';
+    el.draggable = true;
+    el.dataset.id = id;
+    el.dataset.group = group;           // <— important
+    el.innerHTML = `<span class="meta">${label}</span><span class="id">#${id}</span>`;
+    return el;
+  }
+  
+  function attachDnD(zone){
+    zone.addEventListener('dragover', e => {
+      const ok = (zone.dataset.accept === currentDragGroup);
+      if (!ok) {                        // disallow cross-group
+        zone.classList.add('reject');
+        e.dataTransfer.dropEffect = 'none';
+        return;                         // no preventDefault → drop won't fire
+      }
+      e.preventDefault();
+      zone.classList.remove('reject');
+      zone.classList.add('drag-over');
+      e.dataTransfer.dropEffect = 'move';
+    });
+  
+    zone.addEventListener('dragleave', () => {
+      zone.classList.remove('drag-over','reject');
+    });
+  
+    zone.addEventListener('drop', e => {
+      e.preventDefault();
+      zone.classList.remove('drag-over','reject');
+  
+      const payload = e.dataTransfer.getData('text/data');
+      if(!payload) return;
+      const data = JSON.parse(payload);
+  
+      // hard guard by type as well
+      if (zone.dataset.accept !== data.group) {
+        zone.classList.add('reject');
+        return;
+      }
+  
+      // avoid dups
+      if (zone.querySelector(`.item[data-id="${data.id}"]`)) return;
+  
+      // remove from previous parent and add here
+      const dragging = document.querySelector(`.item.dragging[data-id="${data.id}"]`);
+      dragging && dragging.remove();
+  
+      zone.appendChild(makeItem(data.id, data.label, data.group));
+      wireItems(zone);
+      updateCounters();
+    });
+  }
+  
+  function wireItems(ctx=document){
+    qsa('.item', ctx).forEach(it=>{
+      it.addEventListener('dragstart', e=>{
+        it.classList.add('dragging');
+        currentDragGroup = it.dataset.group;  // <— remember what’s being dragged
+        e.dataTransfer.setData('text/source', it.parentElement.id);
+        e.dataTransfer.setData('text/data', JSON.stringify({
+          id: it.dataset.id,
+          label: qs('.meta', it).textContent,
+          group: it.dataset.group
+        }));
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      it.addEventListener('dragend', ()=>{
+        it.classList.remove('dragging');
+        currentDragGroup = null;             // <— clear
+      });
+  
+      // dbl-click still only swaps within same group (your regex enforces this)
+      it.addEventListener('dblclick', ()=>{
+        const parent = it.parentElement.id;
+        const parts = parent.match(/^(brand|cust|cat)(Assigned|Available)$/);
+        if(!parts) return;
+        const prefix = parts[1];
+        const target = parent.endsWith('Assigned') ? `${prefix}Available` : `${prefix}Assigned`;
+        if(!qs(`#${target} .item[data-id="${it.dataset.id}"]`)){
+          qs(`#${target}`).appendChild(it);
+          updateCounters();
+        }
+      });
+    });
+  }
+  
+  // render with group param
+  function renderList(zoneId, data, formatter, group){
+    const z = qs(`#${zoneId}`); z.innerHTML = '';
+    data.forEach(o => z.appendChild(makeItem(o.id, formatter(o), group)));
+    wireItems(z);
+  }
+  function filterList(input){
+    const meta = input.dataset.filter; // e.g. "brand:assigned"
+    const [prefix, side] = meta.split(':');
+    const zone = qs(`#${prefix}${side[0].toUpperCase()+side.slice(1)}`);
+    const q = input.value.trim().toLowerCase();
+    qsa('.item', zone).forEach(it=>{
+      const label = qs('.meta', it).textContent.toLowerCase();
+      it.style.display = label.includes(q) ? '' : 'none';
+    });
+  }
+  function updateCounters(){
+    qs('#brandAssignedCount').textContent = qsa('#brandAssigned .item').length;
+    qs('#brandAvailableCount').textContent = qsa('#brandAvailable .item').length;
+    qs('#custAssignedCount').textContent  = qsa('#custAssigned .item').length;
+    qs('#custAvailableCount').textContent = qsa('#custAvailable .item').length;
+    qs('#catAssignedCount').textContent   = qsa('#catAssigned .item').length;
+    qs('#catAvailableCount').textContent  = qsa('#catAvailable .item').length;
+  }
+  function moveAll(direction){
+    // allow → or -> symbols
+    const parts = direction.split(/→|->/);
+    if (parts.length !== 2) { console.warn('Bad moveAll:', direction); return; }
+  
+    const parse = (token, defaultPrefix=null) => {
+      const segs = token.split(':');
+      if (segs.length === 2) return { prefix: segs[0], side: segs[1] };
+      if (defaultPrefix)     return { prefix: defaultPrefix, side: segs[0] }; // tolerate "assigned"
+      return null;
+    };
+  
+    const left  = parse(parts[0]);
+    const right = parse(parts[1], left?.prefix);
+  
+    if (!left || !right) { console.warn('Bad moveAll tokens:', direction); return; }
+  
+    const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+    const from = qs(`#${left.prefix}${cap(left.side)}`);
+    const to   = qs(`#${right.prefix}${cap(right.side)}`);
+  
+    if (!from || !to) { console.warn('Zones not found for', direction); return; }
+  
+    qsa('.item', from).forEach(it=>{
+      if (!qs(`.item[data-id="${it.dataset.id}"]`, to)) to.appendChild(it);
+    });
+    updateCounters();
+  }
+  function getCurrentSelection(){
+    const ids = sel => qsa(`${sel} .item`).map(it=> +it.dataset.id);
+    return {
+      user_id: $('#userSelect').val() ? +$('#userSelect').val() : null,
+      brands:   { assigned: ids('#brandAssigned'), available: ids('#brandAvailable') },
+      customers:{ assigned: ids('#custAssigned'),  available: ids('#custAvailable')  },
+      categories:{assigned: ids('#catAssigned'),   available: ids('#catAvailable')   }
+    };
+  }
+
+  // --- tiny status helper (optional) ---
+  function setStatus(txt, color = '#9aa0b7') {
+    const el = document.getElementById('saveStatus');
+    if (el) { el.textContent = txt; el.style.color = color; }
+  }
+  
+  // --- manual save only (no autosave, no csrf) ---
+  async function saveAccess() {
+    const sel = getCurrentSelection();
+    if (!sel.user_id) { alert('Select a user first.'); return; }
+  
+    setStatus('Saving…', '#f0ad4e');
+  
+    try {
+      const res = await fetch('/admin/users/access/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }, // no CSRF header
+        body: JSON.stringify(sel),
+      });
+      const data = await res.json().catch(()=> ({}));
+  
+      if (!res.ok || !data.ok) throw new Error(data.msg || 'Save failed');
+  
+      // reflect saved IDs back into the selected <option>
+      const opt = $('#userSelect').find(':selected').get(0);
+      if (opt) {
+        opt.dataset.brands     = sel.brands.assigned.join(',');
+        opt.dataset.customers  = sel.customers.assigned.join(',');
+        opt.dataset.categories = sel.categories.assigned.join(',');
+      }
+  
+      setStatus('Saved ✓', '#58d68d');
+    } catch (err) {
+      console.error(err);
+      setStatus('Error ✗', '#ff7675');
+      alert(err.message || 'Unexpected error while saving.');
+    }
+  }
+  
+  // wire the button
+  document.getElementById('btnSave').addEventListener('click', saveAccess);
+  
+
+  // ======= Init =======
+  document.addEventListener('DOMContentLoaded', () => {
+    // Enhance user select
+    $('#userSelect').select2({ placeholder: $('#userSelect').data('placeholder'), width:'100%' });
+
+    // Prepare dropzones
+    ['brandAssigned','brandAvailable','custAssigned','custAvailable','catAssigned','catAvailable']
+      .forEach(id => attachDnD(qs('#'+id)));
+
+    // Search boxes
+    qsa('.search-input').forEach(inp => inp.addEventListener('input', () => filterList(inp)));
+
+    // Move all / clear all links
+    qsa('[data-moveall]').forEach(a=>{
+      a.addEventListener('click', (e)=>{ e.preventDefault(); moveAll(a.dataset.moveall); });
+    });
+
+    // Clear all (set everything to available)
+    qs('#btnClearAll').addEventListener('click', ()=>{
+      ['brand','cust','cat'].forEach(pref=>{
+        moveAll(`${pref}:assigned→available`);
+      });
+    });
+
+    // Review button: prints current selection to console (UI-only)
+    //qs('#btnReview').addEventListener('click', ()=>{
+    //  const sel = getCurrentSelection();
+    //  console.log('Selection preview:', sel);
+    //  alert('Open console to preview the current selection JSON.');
+    //});
+
+    // Render full “available” lists at start
+    renderList('brandAvailable', ALL_BRANDS, b => b.BrandName,                        'brand');
+    renderList('custAvailable',  ALL_CUSTOMERS, c => `${c.CustCode} — ${c.CustName}`, 'cust');
+    renderList('catAvailable',   ALL_CATEGORIES, k => `${k.CatName} — ${k.CatDesc}`,  'cat');
+    updateCounters();
+
+    // On user change, pre-assign based on data-attributes in the option
+    $('#userSelect').on('select2:select', (e)=>{
+      // Reset everything to available
+      ['brand','cust','cat'].forEach(pref=> moveAll(`${pref}:assigned→available`));
+
+      const opt = e.params.data.element;
+      const brands    = (opt.dataset.brands||'').split(',').filter(Boolean).map(Number);
+      const customers = (opt.dataset.customers||'').split(',').filter(Boolean).map(Number);
+      const cats      = (opt.dataset.categories||'').split(',').filter(Boolean).map(Number);
+
+      // helper to move specific ids from available to assigned
+      function assignByIds(prefix, ids){
+        ids.forEach(id=>{
+          const item = qs(`#${prefix}Available .item[data-id="${id}"]`);
+          if(item) qs(`#${prefix}Assigned`).appendChild(item);
+        });
+      }
+      assignByIds('brand', brands);
+      assignByIds('cust',  customers);
+      assignByIds('cat',   cats);
+      updateCounters();
+    });
+
+    // Wire initial items in available lists for DnD + dblclick
+    wireItems(document);
+  });
+</script>
+{% endblock %}

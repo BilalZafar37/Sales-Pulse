@@ -1,0 +1,400 @@
+{% extends 'base.html' %}
+
+{% block styles %}
+label{
+  color: black !important;
+}
+{% endblock %}
+
+
+{% block content %}
+<div class="wrapper">
+
+  <div class="card shadow-sm" style="border: solid 1px white; border-radius: 2px;">
+    <!-- HEADER -->
+    <div class="card-header text-center" style="background-color: #6f42c1; color: white;">
+      <h2 class="mb-0">Manage Capture Filters</h2>
+    </div>
+
+    <!-- BODY -->
+    <div class="card-body">
+      {# Filters Form #}
+      <form id="filters-form" method="post">
+        <div id="filters-container">
+          {# Always render at least one row #}
+          {% set start = existing|length if existing|length>0 else 1 %}
+          {% for i in range(start) %}
+          <div class="row g-2 align-items-center mb-3 filter-row"
+            {% if existing[i] %}
+              data-op="{{ existing[i].operator }}"
+              data-values='{{ existing[i].values_list | tojson | safe }}'
+            {% endif %}
+          > 
+            <div class="col-md-4">
+              <select class="form-select form-select-sm field-select"
+                      name="filters-{{i}}-field" required>
+                <option value="" disabled selected>Select field</option>
+                {% for col in all_fields %}
+                <option value="{{ col }}"
+                  {% if existing[i] and col==existing[i].field %}selected{% endif %}>
+                  {{ col }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-2">
+              <select class="form-select form-select-sm op-select"
+                      name="filters-{{i}}-op" required>
+                <option value="" disabled selected>Select operator</option>
+              </select>
+            </div>
+            <div class="col-md-5 value-container">
+              <!-- will be populated by JS -->
+            </div>
+            <div class="col-md-1 text-end">
+              <button type="button" class="btn btn-outline-danger btn-sm remove-row">
+                &times;
+              </button>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        <div class="d-flex justify-content-between mt-4">
+          <button type="button" id="add-row" class="btn btn-outline-primary btn-sm">
+            + Add Filter
+          </button>
+          <button type="submit" class="btn btn-primary btn-sm">
+            Save Filters
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card shadow-sm  mt-4" style="border: solid 1px white; border-radius: 2px;">
+    <!-- HEADER -->
+    <div class="card-header text-center" style="background-color: #6f42c1; color: white;">
+      <h2 class="mb-0">Trigger custom Sell-in Capture</h2>
+    </div>
+
+    <!-- BODY -->
+    <div class="card-body">
+      <div class="text-end mt-3">
+        <form method="post" action="{{ url_for('sell_in.capture_now') }}">
+          <div class="row g-3 align-items-end">
+            <!-- FROM DATE -->
+            <div class="col-md-3">
+              <label for="from_date" class="form-label">From</label>
+              <input
+                type="date"
+                id="from_date"
+                name="from_date"
+                class="form-control form-control-lg"
+                value="{{ today|default('') }}"
+                required
+              >
+            </div>
+    
+            <!-- TO DATE -->
+            <div class="col-md-3">
+              <label for="to_date" class="form-label">To</label>
+              <input
+                type="date"
+                id="to_date"
+                name="to_date"
+                class="form-control form-control-lg"
+                value="{{ today|default('') }}"
+                required
+              >
+            </div>
+    
+            <!-- BUTTONS -->
+            <div class="col-md-6 d-flex gap-2">
+              <!-- Run Capture -->
+              <button
+                type="submit"
+                class="btn btn-warning btn-lg flex-fill"
+              >
+                Replace Sell-In
+              </button>
+    
+              <!-- Delete Sell-In -->
+              <button
+                type="submit"
+                formaction="{{ url_for('sell_in.delete_sellin') }}"
+                class="btn btn-danger btn-lg flex-fill"
+              >
+                Delete Sell-In
+              </button>
+
+              <!-- Reseed old Sell-In -->
+              <button
+                type="submit"
+                formaction="{{ url_for('sell_in.backfill_ledger') }}"
+                class="btn btn-warning btn-lg flex-fill"
+              >
+                Reseed Sell-In
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm  mt-4" style="border: solid 1px white; border-radius: 2px;">
+    <!-- HEADER -->
+    <div class="card-header text-center" style="background-color: #6f42c1; color: white;">
+      <h2 class="mb-0">Add test/Fake Sell-In </h2>
+    </div>
+
+    <!-- BODY -->
+    <div class="card-body mb-5 mt-4">
+      <div class="container py-3">
+        <form method="post" action="{{ url_for('sell_in.fake_create') }}" class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label">Sold To Party (Customer Name)</label>
+            <input name="SoldToParty" class="form-control" placeholder="If empty, auto-generated">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Article Code</label>
+            <input name="Article" class="form-control" placeholder="If empty, auto-generated">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Brand</label>
+            <input name="Brand" list="brandList" class="form-control" placeholder="If empty, TEST_BRAND">
+            <datalist id="brandList">
+              {% for b in brands %}<option value="{{ b }}">{% endfor %}
+            </datalist>
+          </div>
+      
+          <div class="col-md-3">
+            <label class="form-label">Document Date</label>
+            <input type="date" name="DocumentDate" class="form-control" value="{{ today }}">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Created At (PK part)</label>
+            <input type="date" name="CreatedAt" class="form-control" value="{{ today }}">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Billing Document</label>
+            <input name="BillingDocument" class="form-control" placeholder="If empty, auto-generated">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Gross Sale Qty</label>
+            <input type="number" step="0.01" name="GrossSale" class="form-control" value="10">
+          </div>
+      
+          <div class="col-md-3">
+            <label class="form-label">Net Value</label>
+            <input type="number" step="0.01" name="Net" class="form-control" value="1000">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Product Discount</label>
+            <input type="number" step="0.01" name="ProdDisc" class="form-control" value="0">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Credit Memos</label>
+            <input type="number" step="0.01" name="CredMemos" class="form-control" value="0">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Return Qty</label>
+            <input type="number" step="0.01" name="ReturnQty" class="form-control" value="0">
+          </div>
+      
+          <div class="col-md-3">
+            <label class="form-label">Sales Office</label>
+            <input name="SalesOffice" class="form-control" value="TEST_OFFICE">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Sales Group</label>
+            <input name="SalesGroup" class="form-control" value="TEST_GROUP">
+          </div>
+      
+          <div class="col-12 form-check mt-2">
+            <input class="form-check-input" type="checkbox" value="1" id="also_ledger" name="also_ledger">
+            <label class="form-check-label" for="also_ledger">
+              Also add a matching SELLIN entry in Inventory Ledger (requires Customer/SKU mapping).
+            </label>
+          </div>
+      
+          <div class="col-12 d-flex gap-2 mt-2">
+            <button class="btn btn-primary" type="submit">Create Fake Sell‑In</button>
+            <a class="btn btn-outline-secondary" href="{{ url_for('sell_in.view_sellin') }}">Back to View</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+{# Hidden template for new rows #}
+<div id="template-row" class="d-none">
+  <div class="row g-2 align-items-center mb-3 filter-row">
+    <div class="col-md-4">
+      <select class="form-select form-select-sm field-select"
+              name="__FIELD__" required>
+        <option disabled selected>Select field</option>
+        {% for col in all_fields %}
+        <option value="{{ col }}">{{ col }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <select class="form-select form-select-sm op-select"
+              name="__OP__" required>
+        <option disabled selected>Operator</option>
+      </select>
+    </div>
+    <div class="col-md-5 value-container">
+      <!-- JS will inject select/text here -->
+    </div>
+    <div class="col-md-1 text-end">
+      <button type="button" class="btn btn-outline-danger btn-sm remove-row">
+        &times;
+      </button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+
+
+
+{% block scripts %}
+<!-- jQuery + Select2 JS -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script
+  src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"
+></script>
+
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const fieldMeta  = {{ field_meta_json | safe }};
+      const numericOps = ['=', '>', '<', '>=', '<='];
+      const stringOps  = ['IN', 'NOT IN', '=', 'LIKE'];
+
+      const $container = $('#filters-container');
+      const tpl        = $('#template-row').html();
+      let count        = $container.find('.filter-row').length;
+
+      function applySingle($el) {
+        $el.select2({
+          width: '100%',
+          minimumResultsForSearch: 5,
+          placeholder: 'Select…',
+          allowClear: true
+        });
+      }
+
+      function applyMulti($el) {
+        $el.select2({
+          width: '100%',
+          multiple: true,
+          placeholder: 'Choose one or more…',
+          allowClear: true
+        });
+      }
+
+      function refreshRow($row) {
+        const savedOp     = $row.data('op');
+        const savedValues = $row.data('values') || [];
+
+        const $fieldSel = $row.find('.field-select');
+        const $opSel    = $row.find('.op-select');
+        const $valDiv   = $row.find('.value-container');
+
+        const fieldVal = $fieldSel.val();
+        if (!fieldVal) {
+          $valDiv.empty();
+          return;
+        }
+
+        const meta     = fieldMeta[fieldVal] || { type:'string', values:[] };
+        const ops      = meta.type === 'numeric' ? numericOps : stringOps;
+        const chosenOp = savedOp || $opSel.val() || ops[0];
+
+        // 1) Rebuild and initialize Field select
+        // (if you want to re-init fieldSelect too)
+        applySingle($fieldSel);
+
+        // 2) Rebuild Operator list
+        $opSel.empty()
+              .append('<option value="" disabled>Select operator</option>');
+        ops.forEach(o => {
+          const $opt = $(`<option value="${o}">${o}</option>`);
+          if (o === chosenOp) $opt.prop('selected', true);
+          $opSel.append($opt);
+        });
+        // *** re-apply Select2 to the freshly-populated opSel ***
+        applySingle($opSel);
+
+        // 3) Build the Value widget
+        $valDiv.empty();
+        if (meta.values.length && ['IN','NOT IN','='].includes(chosenOp)) {
+          const isMulti = chosenOp !== '=';
+          const $sel = $('<select class="form-select form-select-sm">')
+            .attr('name', $fieldSel.attr('name').replace('-field','-value'))
+            .prop('multiple', isMulti);
+
+          meta.values.forEach(v => {
+            const $opt = $('<option>').val(v).text(v);
+            if (savedValues.includes(v)) $opt.prop('selected', true);
+            $sel.append($opt);
+          });
+
+          $valDiv.append($sel);
+          if (isMulti) applyMulti($sel);
+          else        applySingle($sel);
+        }
+        else if (meta.type==='numeric' && ['>','<','>=','<='].includes(chosenOp)) {
+          const $inp = $('<input type="number" step="any" class="form-control form-control-sm">')
+            .attr('name', $fieldSel.attr('name').replace('-field','-value'))
+            .attr('placeholder','Enter number');
+          $valDiv.append($inp);
+        }
+        else {
+          const $inp = $('<input type="text" class="form-control form-control-sm">')
+            .attr('name', $fieldSel.attr('name').replace('-field','-value'))
+            .attr('placeholder','Enter value');
+          $valDiv.append($inp);
+        }
+      }
+
+      function initRow($row) {
+        const $fieldSel = $row.find('.field-select');
+        const $opSel    = $row.find('.op-select');
+
+        // bind change events
+        $fieldSel.on('change', () => refreshRow($row));
+        $opSel.on('change',    () => refreshRow($row));
+
+        // initial population
+        refreshRow($row);
+      }
+
+      // initialize existing rows
+      $container.find('.filter-row').each((_, el) => initRow($(el)));
+
+      // add new row
+      $('#add-row').on('click', () => {
+        const html = tpl
+          .replace(/__FIELD__/g, `filters-${count}-field`)
+          .replace(/__OP__/g,    `filters-${count}-op`)
+          .replace(/__VAL__/g,   `filters-${count}-value`);
+        const $row = $(html);
+        $container.append($row);
+        initRow($row);
+        count++;
+      });
+
+      // remove row
+      $container.on('click', '.remove-row', e => {
+        $(e.currentTarget).closest('.filter-row').remove();
+      });
+    });
+  </script>
+{% endblock %}

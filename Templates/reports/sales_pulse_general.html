@@ -1,0 +1,434 @@
+{% extends "base.html" %}
+{% block title %}Sales Pulse General Report{% endblock %}
+
+{% block content %}
+<div class="content-with-sidebar container-fluid py-3">
+  <div class="d-flex align-items-center mb-3">
+    <h4 class="mb-0">Sales Pulse — General Report</h4>
+    <span class="badge bg-secondary ms-3">Windowed by date range</span>
+    <div class="ms-auto d-flex gap-2">
+      <button id="btnExport" class="btn btn-outline-primary btn-sm">Export CSV</button>
+      <button id="btnRefresh" class="btn btn-primary btn-sm">Refresh</button>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="card mb-3">
+    <div class="card-body">
+      <form id="filterForm" class="row g-3 align-items-end">
+        <div class="col-md-3">
+          <label class="form-label">Brand</label>
+          <select id="fBrand" class="form-select" data-placeholder="All brands"></select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Customer</label>
+          <select id="fCustomer" class="form-select" data-placeholder="All customers"></select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Category</label>
+          <select id="fCategory" class="form-select" data-placeholder="All categories"></select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Date From</label>
+          <input id="fFrom" type="date" class="form-control"/>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Date To</label>
+          <input id="fTo" type="date" class="form-control"/>
+        </div>
+        <div class="col-12 d-flex gap-2">
+          <button type="button" id="btnApply" class="btn btn-primary">Apply</button>
+          <button type="button" id="btnReset" class="btn btn-outline-secondary">Reset</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Alerts -->
+  <div id="status" class="mb-2"></div>
+
+  <!-- Table -->
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle" id="tbl">
+        <thead class="table-light">
+          <tr>
+            <th style="width:70px;" class="text-center">Sr.</th>
+            <th>Brand</th>
+            <th>Customer</th>
+            <th>GO-Live Date</th>
+            <th>Category</th>
+            <th>Cust-SKU</th>
+            <th>MEC-SKU</th>
+            <!-- NEW COLUMNS -->
+            <th class="text-end">Initial SOH</th>
+            
+            
+            <th class="text-end">Sell-in (Qty)</th>
+            <th class="text-end">Sell-in Value</th>
+            <th class="text-end">Price <span class="text-muted small">(assumed)</span></th>
+            <th class="text-end">Sell-out</th>
+            <th class="text-end">Returns</th>
+            <th class="text-end">Initial-SOH-Balance</th>
+            <th class="text-end">SOH (as of To)</th>
+          </tr>
+        </thead>
+        <tbody id="tbody">
+          <tr><td colspan="14" class="text-muted text-center py-4">Choose a date range and click Apply.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card-footer d-flex justify-content-between align-items-center">
+      <small id="pageInfo" class="text-muted"></small>
+      <button id="btnMore" class="btn btn-outline-primary btn-sm" disabled>Load more</button>
+    </div>
+  </div>
+
+  <div class="mt-2 text-muted small">
+    <strong>Price note:</strong> “Price” is an approximation from sell-in history for the selected window (weighted average, with peak/floor/recent in tooltip). It may not match actuals.
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- jQuery + Select2 (CSS already loaded in base.html) -->
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+<script>
+(() => {
+  const EP = {
+    list:   '/sales-pulse-general/api/list',
+    export: '/sales-pulse-general/api/export',
+    optCustomers: '/masters/api/options/customers',
+    optCategories:'/masters/api/options/categories',
+    choices:      '/sell-out-approvals/choices',    // for brands
+    anchor:       '/sales-pulse-general/api/customer-anchor'  // NEW
+  };
+
+  // ---- state ----
+  let page = 1, pageSize = 100, total = 0, shown = 0;
+  let goLiveISO = null; // e.g. "2025-01-20"
+
+  function setFromDisabled(disabled=true){
+    $fFrom.prop('disabled', disabled);
+    if (disabled){
+      $fFrom.val('');
+      $fFrom.attr('min',''); // clear restriction
+    }
+  }
+  
+  function applyAnchorToInputs(anchorISO){
+    goLiveISO = anchorISO || null;
+  
+    // Set min on "From"
+    if (goLiveISO){
+      $fFrom.attr('min', goLiveISO);
+      // If current From < min, bump it
+      const cur = $fFrom.val();
+      if (!cur || cur < goLiveISO) $fFrom.val(goLiveISO);
+    } else {
+      $fFrom.attr('min','');
+    }
+  
+    // Keep Date To ≥ Date From
+    const fromVal = $fFrom.val();
+    if (fromVal){
+      // If To is blank, keep today; else ensure To ≥ From
+      const toVal = $fTo.val();
+      if (!toVal || toVal < fromVal) $fTo.val(fromVal);
+      // Optional: also set min on To so users can't pick earlier than From
+      $fTo.attr('min', fromVal);
+    } else {
+      $fTo.attr('min','');
+    }
+  }
+  
+
+  // ---- els ----
+  const $tbody = $('#tbody'), $pageInfo = $('#pageInfo'), $status = $('#status'), $btnMore = $('#btnMore');
+  const $fBrand = $('#fBrand'), $fCustomer = $('#fCustomer'), $fCategory = $('#fCategory'), $fFrom = $('#fFrom'), $fTo = $('#fTo');
+
+  // ---- helpers ----
+  function showStatus(kind, msg) {
+    $status.html(`<div class="alert alert-${kind} alert-dismissible fade show py-2">
+      ${msg}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>`);
+  }
+  function n2(x){ return (x==null||isNaN(x)) ? '' : Number(x).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}); }
+  function dateStr(d){ return d ? new Date(d).toISOString().slice(0,10) : ''; }
+
+  function brand(){ return $fBrand.val() || null; }
+  function custId(){ const v = $fCustomer.val(); return v ? Number(v) : null; }
+  function catId(){ const v = $fCategory.val(); return v ? Number(v) : null; }
+  function dFrom(){ return $fFrom.val() || null; }
+  function dTo(){ return $fTo.val() || null; }
+
+  function priceTooltip(r){
+    const hi = r.PriceHi!=null ? n2(r.PriceHi) : '—';
+    const lo = r.PriceLo!=null ? n2(r.PriceLo) : '—';
+    const last = r.PriceLast!=null ? n2(r.PriceLast) : '—';
+    return `Peak price: ${hi}\nFloor price: ${lo}\nMost recent price: ${last}\n\nNote: price is approximated from sell-in history for the selected dates.`;
+  }
+
+  function rowHTML(r, sr){
+    const price = (r.PriceAvg != null) ? n2(r.PriceAvg) : '—';
+    const value = (r.SellInValue != null) ? n2(r.SellInValue) : '—';
+    const neg   = (r.SOH ?? 0) < 0;
+  
+    // numbers
+    const sellIn  = n2(Number(r.SellIn || 0));
+    const sellOut = n2(Number(r.SellOut || 0));
+    const soh     = n2(Number(r.SOH || 0));
+  
+    // NEW fields coming from backend
+    const initTotal   = (r.InitialSOH == null ? '—' : n2(Number(r.InitialSOH)));
+    const initBalance = (r.InitialSOHBalance == null ? '—' : n2(Number(r.InitialSOHBalance)));
+    const goLiveDate  = (r.InitialSOHDate ? dateStr(r.InitialSOHDate) : '—');
+  
+    return `
+      <tr class="${neg ? 'table-danger' : ''}">
+        <td class="text-center">${sr}</td>
+        <td>${r.Brand || ''}</td>
+        <td>${r.Customer || ''}</td>
+        <td>${goLiveDate}</td>
+        <td>${r.Category || ''}</td>
+        <td>${r.CustSKU || ''}</td>
+        <td>${r.MECSKU || ''}</td>
+
+        <!-- NEW COLUMN -->
+        <td class="text-end">${initTotal}</td>
+        
+        <td class="text-end">${sellIn}</td>
+        <td class="text-end">${value}</td>
+        <td class="text-end">
+          <span data-bs-toggle="tooltip" data-bs-placement="left"
+                title="${priceTooltip(r).replace(/"/g,'&quot;')}">${price}</span>
+        </td>
+  
+        <td class="text-end">${sellOut}</td>
+        <td class="text-end">${r.Returns}</td>
+        <td class="text-end">${initBalance}</td>
+        <td class="text-end fw-semibold">${soh}</td>
+      </tr>`;
+  }
+    
+
+  function initTooltips(scope=document){
+    const els = [].slice.call(scope.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    els.forEach(el => new bootstrap.Tooltip(el));
+  }
+
+  function setLoading(){
+    if (page === 1) {
+      $tbody.html(`<tr><td colspan="14" class="text-center py-4"><div class="spinner-border"></div></td></tr>`);
+    }
+  }
+  function updatePager(t){
+    total = t || 0;
+    $pageInfo.text(`${shown} of ${total}`);
+    $btnMore.prop('disabled', shown >= total);
+  }
+
+  async function load({append=false}={}){
+    try{
+      setLoading();
+      const payload = {
+        brand: brand(),
+        customer_id: custId(),
+        category_id: catId(),
+        date_from: dFrom(),
+        date_to: dTo(),
+        page, page_size: pageSize
+      };
+      const res = await fetch(EP.list, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+      const json = await res.json();
+      if (!res.ok || json.ok === false) throw new Error(json.error || 'Failed to load');
+
+      const rows = json.items || [];
+      if (!append){ $tbody.empty(); shown = 0; }
+
+      if (!rows.length && page === 1){
+        $tbody.html(`<tr><td colspan="14" class="text-muted text-center py-4">No data for selected filters.</td></tr>`);
+      } else {
+        const startSr = shown + 1;
+        const frag = document.createDocumentFragment();
+        rows.forEach((r,i) => {
+          const wrap = document.createElement('tbody');
+          wrap.innerHTML = rowHTML(r, startSr + i);
+          frag.appendChild(wrap.firstElementChild);
+        });
+        $tbody[0].appendChild(frag);
+        shown += rows.length;
+        initTooltips(document);
+      }
+      updatePager(json.total);
+    } catch(e){
+      console.error(e);
+      showStatus('danger', e.message);
+    }
+  }
+
+  // ---- select2 helpers ----
+  function sel2($el, url, placeholder){
+    $el.select2({
+      width: '100%',
+      placeholder,
+      allowClear: true,
+      ajax: {
+        url, delay: 250,
+        data: params => ({ term: params.term }),
+        processResults: data => data   // expects {results:[{id,text}]}
+      }
+    });
+  }
+  async function initBrands(){
+    try{
+      const res = await fetch(EP.choices);
+      if(!res.ok) return;
+      const data = await res.json();
+      const brands = (data.brands || []).map(b => b.name).filter(Boolean);
+      $fBrand.append(`<option value=""></option>`);
+      brands.forEach(b => $fBrand.append(`<option value="${b}">${b}</option>`));
+      $fBrand.select2({ width:'100%', placeholder: $fBrand.data('placeholder') || 'All brands', allowClear: true });
+    }catch(_){}
+  }
+  
+  async function loadChoices() {
+    try {
+      const res = await fetch('/sell-out/choices');
+      if (!res.ok) throw new Error('Failed to load choices');
+      const data = await res.json();
+
+      // Customers (array of {id, code, name, level})
+      $fCustomer.empty(); 
+      (data.customers || []).forEach(c => {
+        const label = `${c.name} (${c.code})${c.level ? ' – ' + c.level : ''}`;
+        $fCustomer.append(new Option(label, c.id));
+      });
+
+      // refresh Select2
+      $fCustomer.trigger('change');
+
+    } catch (e) {
+      showStatus('danger', 'Could not load brands/customers. Please refresh.');
+      console.error(e);
+    }
+  }
+  
+
+  // ---- events ----
+  $('#btnReset').on('click', () => {
+    $fBrand.val(null).trigger('change');
+    $fCustomer.val(null).trigger('change');
+    $fCategory.val(null).trigger('change');
+  
+    setFromDisabled(true);
+    applyAnchorToInputs(null);
+  
+    const t = new Date(); const m = String(t.getMonth()+1).padStart(2,'0'); const d = String(t.getDate()).padStart(2,'0');
+    $fTo.attr('min',''); // clear min on To
+    $fTo.val(`${t.getFullYear()}-${m}-${d}`);
+  });
+  
+  $('#btnRefresh').on('click', () => { page = 1; load({append:false}); });
+  $btnMore.on('click', () => { page += 1; load({append:true}); });
+
+  // CSV export via fetch -> blob download (sends JSON, matches your blueprint)
+  $('#btnExport').on('click', async () => {
+    try{
+      const payload = {
+        brand: brand(),
+        customer_id: custId(),
+        category_id: catId(),
+        date_from: dFrom(),
+        date_to: dTo(),
+        page: 1, page_size: 1000000
+      };
+      const res = await fetch(EP.export, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+      if(!res.ok) throw new Error('Export failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'sales_pulse_general.csv';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    }catch(e){
+      showStatus('danger', e.message);
+    }
+  });
+
+  $('#btnApply').on('click', () => {
+    // Hard guard in UI
+    const from = dFrom();
+    if (from && goLiveISO && from < goLiveISO){
+      showStatus('warning', `Start date cannot be before Go-Live (${goLiveISO}). I’ve adjusted it.`);
+      $fFrom.val(goLiveISO);
+      $fTo.attr('min', goLiveISO);
+    }
+    // Optional: ensure To ≥ From
+    if ($fTo.val() && from && $fTo.val() < from){
+      $fTo.val(from);
+    }
+    page = 1; load({append:false});
+  });
+  
+
+  $fCustomer.on('change', async () => {
+    const cid = custId();
+    if (!cid){
+      // No customer → keep From disabled and clear restrictions
+      setFromDisabled(true);
+      applyAnchorToInputs(null);
+      return;
+    }
+  
+    try{
+      // Ask backend for Go-Live (as of today)
+      const t = new Date(); 
+      const todayISO = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
+      const res = await fetch(`${EP.anchor}?customer_id=${cid}&as_of=${todayISO}`);
+      const js  = await res.json();
+      if (!res.ok || js.ok === false) throw new Error(js.error || 'Failed to fetch Go-Live date');
+  
+      // Enable From and apply restriction
+      setFromDisabled(false);
+      applyAnchorToInputs(js.anchor || null);
+  
+    } catch(e){
+      showStatus('danger', e.message || 'Could not get Go-Live date');
+      // Fail-safe: keep From disabled
+      setFromDisabled(true);
+      applyAnchorToInputs(null);
+    }
+  });
+  
+
+
+  // ---- init ----
+  (function init(){
+    // default Date To = today
+    const t = new Date(); const m = String(t.getMonth()+1).padStart(2,'0'); const d = String(t.getDate()).padStart(2,'0');
+    $fTo.val(`${t.getFullYear()}-${m}-${d}`);
+    
+    //sel2($fCustomer,  EP.optCustomers,  $fCustomer.data('placeholder') || 'All customers');
+    sel2($fCategory,  EP.optCategories, $fCategory.data('placeholder') || 'All categories');
+    initBrands();
+
+    // Load customers with your own formatting, then enable Select2
+    loadChoices().then(() => {
+      $fCustomer.prepend('<option value=""></option>');   // allowClear placeholder
+      $fCustomer.select2({
+        width: '100%',
+        placeholder: $fCustomer.data('placeholder') || 'All customers',
+        allowClear: true
+      });
+    });
+
+    setFromDisabled(true); // From starts disabled until customer picked
+
+    page = 1; load({append:false});
+  })();
+})();
+</script>
+{% endblock %}

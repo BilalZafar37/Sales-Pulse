@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+{% block title %}Overselling Report{% endblock %}
+
+{% block content %}
+<div class="content-with-sidebar container-fluid py-3">
+
+    <div class="d-flex align-items-center mb-3">
+        <h4 class="mb-0">Overselling Report</h4>
+        <!-- <span class="badge bg-danger ms-3">Only rows with negative SOH</span> -->
+        <div class="ms-auto d-flex gap-2">
+            <button id="btnExport" class="btn btn-outline-primary btn-sm">Export CSV</button>
+            <button id="btnRefresh" class="btn btn-primary btn-sm">Refresh</button>
+        </div>
+    </div>
+
+
+    <!-- Filters -->
+    <div class="card mb-3">
+    <div class="card-body">
+        <form id="filterForm" class="row g-3 align-items-end">
+        <div class="col-md-3">
+            <label class="form-label">Brand</label>
+            <select id="fBrand" class="form-select" data-placeholder="All brands"></select>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">Customer</label>
+            <select id="fCustomer" class="form-select" data-placeholder="All customers"></select>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">Category</label>
+            <select id="fCategory" class="form-select" data-placeholder="All categories"></select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">As of</label>
+            <input id="fAsOf" type="date" class="form-control"/>
+        </div>
+        
+        <div class="col-md-12 d-flex gap-2">
+            <button type="button" id="btnApply" class="btn btn-primary">Apply</button>
+            <button type="button" id="btnReset" class="btn btn-outline-secondary">Reset</button>
+        </div>
+        </form>
+    </div>
+    </div>
+
+    <!-- Summary cards -->
+    <div class="row g-3 mb-3">
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm" style="background:#ffe5e7;">
+            <div class="card-body">
+                <div class="text-muted small text-uppercase">Total Negative Qty</div>
+                <div class="fs-4 fw-bold" id="sumNegQty">0</div>
+            </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm" style="background:#ffe5e7;">
+            <div class="card-body">
+                <div class="text-muted small text-uppercase">Total Negative Value (Assumed)</div>
+                <div class="fs-4 fw-bold" id="sumNegVal">0</div>
+                <div class="small text-muted">*assumed average price; may differ from actuals.</div>
+            </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alerts -->
+    <div id="status" class="mb-2"></div>
+
+    <!-- Table -->
+    <div class="card">
+        <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle" id="tbl">
+            <thead class="table-light">
+            <tr>
+                <th style="width:70px;">Sr.</th>
+                <th>Brand</th>
+                <th>Customer</th>
+                <th>Category (Name — Desc)</th>
+                <th>Cust-SKU</th>
+                <th>MEC-SKU</th>
+                <th class="text-end">Sell-in (Qty)</th>
+                <th class="text-end">Sell-in Value</th>
+                <th class="text-end">Price <span class="text-muted small">(assumed)</span></th>
+                <th class="text-end">Sell-out</th>
+                <th class="text-end">Current SOH</th>
+            </tr>
+            </thead>
+            <tbody id="tbody">
+            <tr><td colspan="11" class="text-muted text-center py-4">Use filters and click Refresh.</td></tr>
+            </tbody>
+        </table>
+        </div>
+        <div class="card-footer d-flex justify-content-between align-items-center">
+        <small id="pageInfo" class="text-muted"></small>
+        <button id="btnMore" class="btn btn-outline-primary btn-sm" disabled>Load more</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- jQuery + Select2 JS (CSS already in base.html) -->
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+<script>
+(() => {
+  const EP = {
+    list:   '/overselling/api/list',
+    export: '/overselling/api/export',
+    optCustomers: '/masters/api/options/customers',
+    optCategories:'/masters/api/options/categories',
+    choices:      '/sell-out-approvals/choices'  // for brands
+  };
+
+  // ---------- state ----------
+  let page = 1, pageSize = 100, total = 0, itemsShown = 0, allRows = [];
+
+  // ---------- elements ----------
+  const $status   = $('#status');
+  const $tbody    = $('#tbody');
+  const $pageInfo = $('#pageInfo');
+  const $btnMore  = $('#btnMore');
+  const $sumNegQty = $('#sumNegQty');
+  const $sumNegVal = $('#sumNegVal');
+
+  const $fBrand    = $('#fBrand');
+  const $fCustomer = $('#fCustomer');
+  const $fCategory = $('#fCategory');
+  const $fAsOf     = $('#fAsOf');
+
+  // ---------- helpers ----------
+  function showStatus(kind, msg) {
+    $status.html(
+      `<div class="alert alert-${kind} alert-dismissible fade show py-2">
+         ${msg}
+         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+       </div>`
+    );
+  }
+  function n2(x){ return (x==null||isNaN(x)) ? '' : Number(x).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}); }
+  function n0(x){ return (x==null||isNaN(x)) ? '0' : Number(x).toLocaleString(); }
+
+  function catId(){ const v = $fCategory.val(); return v ? Number(v) : null; }
+  function custId(){ const v = $fCustomer.val(); return v ? Number(v) : null; }
+  function brand(){ return $fBrand.val() || null; }
+  function asOf(){ return $fAsOf.val() || null; }
+
+  function priceTooltip(r){
+    const hi = r.PriceHi!=null ? n2(r.PriceHi) : '—';
+    const lo = r.PriceLo!=null ? n2(r.PriceLo) : '—';
+    const last = r.PriceLast!=null ? n2(r.PriceLast) : '—';
+    return `Highest: ${hi}\nLowest: ${lo}\nLast sell-in: ${last}\n\nNote: price is an approximation derived from sell-in history and may not match actuals.`;
+  }
+
+  function rowHTML(r, idx){
+    const neg = (r.CurrentSOH ?? 0) < 0;
+    const price = (r.PriceAvg!=null) ? n2(r.PriceAvg) : '—';
+    const value = (r.SellInValue!=null) ? n2(r.SellInValue) : '—';
+    return `
+      <tr class="${neg ? 'table-danger':''}">
+        <td class="text-end">${idx}</td>
+        <td>${r.Brand || ''}</td>
+        <td>${r.Customer || ''}</td>
+        <td>${r.Category || ''}</td>
+        <td>${r.CustSKU || ''}</td>
+        <td>${r.MECSKU || ''}</td>
+        <td class="text-end">${n2(r.SellIn)}</td>
+        <td class="text-end">${value}</td>
+        <td class="text-end">
+          <span data-bs-toggle="tooltip" data-bs-placement="left" title="${priceTooltip(r).replace(/"/g,'&quot;')}">${price}</span>
+        </td>
+        <td class="text-end">${n2(r.SellOut)}</td>
+        <td class="text-end fw-semibold">${n2(r.CurrentSOH)}</td>
+      </tr>`;
+  }
+
+  function initTooltips(scope=document){
+    const triggerList = [].slice.call(scope.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    triggerList.forEach(el => new bootstrap.Tooltip(el));
+  }
+
+  function setLoading(){
+    if (page === 1) {
+      $tbody.html(`<tr><td colspan="11" class="text-center py-4"><div class="spinner-border"></div></td></tr>`);
+    }
+  }
+
+  function updatePager(totalCount){
+    total = totalCount;
+    $pageInfo.text(`${itemsShown} of ${total}`);
+    $btnMore.prop('disabled', itemsShown >= total);
+  }
+
+  function updateSummaries(){
+    // total negative qty & value (assumed): sum over rows
+    let q = 0, v = 0;
+    for (const r of allRows){
+      const negQty = Math.max(0, -(r.CurrentSOH ?? 0));
+      q += negQty;
+      const p = (r.PriceAvg!=null) ? r.PriceAvg : (r.PriceLast!=null ? r.PriceLast : 0);
+      v += negQty * (p || 0);
+    }
+    $sumNegQty.text(n0(q));
+    $sumNegVal.text(n2(v));
+  }
+
+  async function load({append=false}={}){
+    try{
+      setLoading();
+      const payload = {
+        brand: brand(),
+        customer_id: custId(),
+        category_id: catId(),
+        as_of: asOf(),
+        page, page_size: pageSize
+      };
+      const res = await fetch(EP.list, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+      const json = await res.json();
+      if(!res.ok || json.ok === false) throw new Error(json.error || 'Failed to load');
+
+      const rows = json.items || [];
+      if(!append){ $tbody.empty(); itemsShown = 0; allRows = []; }
+
+      if(!rows.length && page === 1){
+        $tbody.html(`<tr><td colspan="11" class="text-muted text-center py-4">No negative SOH rows for selected filters.</td></tr>`);
+      }else{
+        // render with Sr. continuing across pages
+        const startIdx = itemsShown + 1;
+        const frag = document.createDocumentFragment();
+        rows.forEach((r, i) => {
+          const wrapper = document.createElement('tbody');
+          wrapper.innerHTML = rowHTML(r, startIdx + i);
+          frag.appendChild(wrapper.firstElementChild);
+        });
+        $tbody[0].appendChild(frag);
+        itemsShown += rows.length;
+        allRows = allRows.concat(rows);
+        initTooltips(document); // enable title tooltips
+      }
+      updatePager(json.total || 0);
+      updateSummaries();
+    }catch(e){
+      console.error(e);
+      showStatus('danger', e.message);
+    }
+  }
+
+  // ---------- select2 ----------
+  function sel2($el, url, placeholder){
+    $el.select2({
+      width: '100%',
+      placeholder,
+      allowClear: true,
+      ajax: {
+        url,
+        delay: 250,
+        data: params => ({ term: params.term }),
+        processResults: data => data // expects {results:[{id,text}]}
+      }
+    });
+  }
+
+  // Brand select from choices endpoint
+  async function initBrands(){
+    try{
+      const res = await fetch(EP.choices);
+      if(!res.ok) return;
+      const data = await res.json();
+      const brands = (data.brands || []).map(b => b.name).filter(Boolean);
+      $fBrand.append(`<option value=""></option>`);
+      brands.forEach(b => $fBrand.append(`<option value="${b}">${b}</option>`));
+      $fBrand.select2({ width:'100%', placeholder: $fBrand.data('placeholder') || 'All brands', allowClear: true });
+    }catch(_){}
+  }
+
+  // ---------- events ----------
+  $('#btnApply').on('click', () => { page = 1; load({append:false}); });
+  $('#btnReset').on('click', () => {
+    $fBrand.val(null).trigger('change');
+    $fCustomer.val(null).trigger('change');
+    $fCategory.val(null).trigger('change');
+    const t = new Date(); const m = String(t.getMonth()+1).padStart(2,'0'); const d = String(t.getDate()).padStart(2,'0');
+    $fAsOf.val(`${t.getFullYear()}-${m}-${d}`);
+  });
+  $('#btnRefresh').on('click', () => { page = 1; load({append:false}); });
+  $btnMore.on('click', () => { page += 1; load({append:true}); });
+
+  // Export via hidden form POST
+  $('#btnExport').on('click', () => {
+    const payload = {
+      brand: brand(),
+      customer_id: custId(),
+      category_id: catId(),
+      as_of: asOf(),
+      page: 1,
+      page_size: 1000000
+    };
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = EP.export;
+    form.style.display = 'none';
+    const input = document.createElement('input');
+    input.name = 'payload';
+    input.value = JSON.stringify(payload);
+    form.appendChild(input);
+    document.body.appendChild(form);
+    form.submit();
+    setTimeout(()=>document.body.removeChild(form), 500);
+  });
+
+  // ---------- init ----------
+  (function init(){
+    // default date = today
+    const t = new Date(); const m = String(t.getMonth()+1).padStart(2,'0'); const d = String(t.getDate()).padStart(2,'0');
+    $fAsOf.val(`${t.getFullYear()}-${m}-${d}`);
+
+    // selects
+    sel2($fCustomer,  EP.optCustomers,  $fCustomer.data('placeholder') || 'All customers');
+    sel2($fCategory,  EP.optCategories, $fCategory.data('placeholder') || 'All categories');
+    initBrands();
+
+    // first load
+    page = 1; load({append:false});
+  })();
+})();
+</script>
+{% endblock %}

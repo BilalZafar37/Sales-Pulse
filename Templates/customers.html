@@ -1,0 +1,388 @@
+{% extends "base.html" %}
+{% block title %}Customers Management{% endblock %}
+
+{% block styles %}
+
+.select2-container { width: 100% !important; z-index: 2000; }
+.select2-dropdown { z-index: 2001; }
+.table thead th { white-space: nowrap; }
+
+.modal-content,
+.modal-content .modal-title,
+.modal-content .form-label,
+.modal-content .form-text .form-label{
+  color: #212529;
+}
+
+/* Keep Select2 above Bootstrap modal (modal is ~1055) */
+.select2-container { z-index: 2000 !important; }
+.select2-container .select2-dropdown { z-index: 2001 !important; }
+
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex align-items-center gap-2 mb-2">
+    <h4 class="mb-0">Customers</h4>
+    <span class="ms-2 text-muted">Manage status and HO↔Branch relationships</span>
+    <div class="ms-auto d-flex gap-2">
+      <button class="btn btn-outline-dark" id="btnRecompute">Refresh statuses</button>
+      <button class="btn btn-outline-secondary" id="btnTpl">Download template</button>
+      <button class="btn btn-outline-primary" id="btnUpload">Upload Excel</button>
+      <input id="fileUpload" type="file" class="d-none" accept=".xlsx" />
+    </div>
+  </div>
+
+  <div class="row g-2 align-items-center mb-2">
+    <div class="col-md-4">
+      <input id="q" class="form-control" placeholder="Search code or name and press Enter">
+    </div>
+    <div class="col-md-8 d-flex gap-2 justify-content-end">
+      <button id="btnAdd" class="btn btn-primary">Add</button>
+      <div class="vr"></div>
+      <select id="bulkParent" class="form-select" style="max-width:360px"></select>
+      <button id="btnBulkSetParent" class="btn btn-outline-primary">Set Parent for selected</button>
+      <button id="btnBulkClearParent" class="btn btn-outline-danger">Clear Parent for selected</button>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-sm align-middle" id="grid">
+      <thead class="table-light">
+        <tr>
+          <th style="width:32px;"><input type="checkbox" id="chkAll"></th>
+          <th>Code</th>
+          <th>Name</th>
+          <th>Level</th>
+          <th>Parent Code</th>
+          <th>Parent Name</th>
+          <th>Status</th>
+          <th>Status Date</th>
+          <th style="width:140px;"></th>
+        </tr>
+      </thead>
+      <tbody id="tbody"><tr><td colspan="9" class="text-muted">Loading…</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="d-flex justify-content-between align-items-center">
+    <small id="pageInfo" class="text-muted"></small>
+    <div id="pager" class="btn-group"></div>
+  </div>
+</div>
+
+<!-- Add/Edit Modal -->
+<div class="modal fade" id="dlg" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">Customer</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <input type="hidden" id="cId">
+        <div class="mb-2"><label class="form-label">Code</label><input id="cCode" class="form-control"></div>
+        <div class="mb-2"><label class="form-label">Name</label><input id="cName" class="form-control"></div>
+        <div class="mb-2">
+          <label class="form-label">Level</label>
+          <select id="cLevel" class="form-select">
+            <option>HO</option>
+            <option>Branch</option>
+          </select>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Parent (HO)</label>
+          <select id="cParent" class="form-select"></select>
+          <div class="form-text">Required for Branch; must point to HO.</div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Status</label>
+          <select id="cStatus" class="form-select"></select>
+        </div>
+        
+        <div class="mb-0">
+          <label class="form-label">Status Date</label>
+          <input id="cStatusDate" class="form-control" type="date">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btnSave" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+<script>
+(() => {
+  const EP = {
+    list:    '/customer-mgmt/api/customers',
+    create:  '/customer-mgmt/api/customers',
+    update:  (id)=>`/customer-mgmt/api/customers/${id}`,
+    del:     (id)=>`/customer-mgmt/api/customers/${id}`,
+    setPar:  (id)=>`/customer-mgmt/api/customers/${id}/set_parent`,
+    bulkTpl: '/customer-mgmt/api/bulk/template/customers',
+    bulkUp:  '/customer-mgmt/api/bulk/upload/customers',
+    optCust: '/customer-mgmt/api/options/customers',
+    recompute: '/customer-mgmt/api/status/recompute',  // <---
+  };
+
+  // Button click
+  $('#btnRecompute').on('click', ()=>{
+    $('#btnRecompute').prop('disabled', true).text('Recomputing…');
+    fetch(EP.recompute, {method:'POST'})
+      .then(r=>r.json()).then(j=>{
+        if(j.ok===false){ alert(j.error||'Recompute failed'); return; }
+        console.log('Status recompute:', j);
+        load(); // refresh the grid to show updated statuses
+      })
+      .finally(()=>$('#btnRecompute').prop('disabled', false).text('Recompute statuses'));
+  });
+
+  // Optional: also trigger automatically whenever the page loads/refreshed
+  //fetch(EP.recompute, {method:'POST'}).then(()=>load());
+
+  // Select2 loaders
+  function sel2HO($el){
+    $el.select2({
+      ajax: {
+        url: EP.optCust,
+        data: (p)=>({ term: p.term, level: 'HO' }),
+        processResults: d => d
+      },
+      width: '100%',
+      placeholder: 'Select HO…',
+      allowClear: true
+    });
+  }
+
+  function sel2Status($el){
+    $el.select2({
+      ajax:{ url:'/customer-mgmt/api/options/statuses',
+        data:p=>({term:p.term}), processResults:d=>d },
+      width:'100%', placeholder:'Select status…', allowClear:true
+    });
+  }
+  sel2Status($('#cStatus'));
+  
+
+  // Pager renderer
+  function renderPager($wrap, state, onChange){
+    const totalPages = Math.max(1, Math.ceil((state.total||0) / state.pageSize));
+    const p = Math.min(Math.max(1, state.page), totalPages);
+    const btn = (id, label, dis=false)=>`<button type="button" class="btn btn-sm btn-outline-secondary pager-btn" data-act="${id}" ${dis?'disabled':''}>${label}</button>`;
+    $wrap.html([
+      btn('first','« First', p<=1),
+      btn('prev','‹ Prev',  p<=1),
+      `<span class="px-2 small align-self-center">Page ${p} / ${totalPages}</span>`,
+      btn('next','Next ›',  p>=totalPages),
+      btn('last','Last »',  p>=totalPages),
+    ].join(' '));
+    $wrap.off('click','.pager-btn').on('click','.pager-btn', e=>{
+      const act = e.currentTarget.dataset.act;
+      if(act==='first') state.page = 1;
+      else if(act==='prev') state.page = Math.max(1, p-1);
+      else if(act==='next') state.page = Math.min(totalPages, p+1);
+      else if(act==='last') state.page = totalPages;
+      onChange();
+    });
+  }
+
+  // State
+  const state = { page:1, pageSize:50, total:0, q:'' };
+
+  // Elements
+  const $tbody = $('#tbody'), $q = $('#q');
+
+  function load(){
+    $tbody.html('<tr><td colspan="9">Loading…</td></tr>');
+    const params = new URLSearchParams({ q: state.q, page: state.page, page_size: state.pageSize });
+    fetch(EP.list + '?' + params)
+      .then(r=>r.json()).then(j=>{
+        state.total = j.total || 0;
+        const rows = (j.items||[]).map(r=>`
+          <tr data-id="${r.CustomerID}">
+            <td><input type="checkbox" class="rowchk"></td>
+            <td>${r.CustCode||''}</td>
+            <td>${r.CustName||''}</td>
+            <td>${r.LevelType||''}</td>
+            <td>${r.ParentCustCode||'-'}</td>
+            <td>${r.ParentCustName||'-'}</td>
+            <td><span>${r.StatusName||'-'}</span>
+              ${(r.StatusTags||[]).map(t=>`<span class="badge text-bg-secondary ms-1">${t}</span>`).join('')}</td>
+            <td>${r.StatusDate||'-'}</td>
+            <td class="text-end">
+              <button class="btn btn-sm btn-outline-primary act-edit">Edit</button>
+              <button class="btn btn-sm btn-outline-secondary act-parent">Set Parent</button>
+              <button class="btn btn-sm btn-outline-danger act-del">Del</button>
+            </td>
+          </tr>
+        `).join('') || '<tr><td colspan="9" class="text-muted">No results.</td></tr>';
+        $tbody.html(rows);
+        $('#pageInfo').text(`Showing page ${state.page} of ${Math.max(1, Math.ceil(state.total/state.pageSize))} — ${state.total} total`);
+        renderPager($('#pager'), state, load);
+        $('#chkAll').prop('checked', false);
+      });
+  }
+
+  // Search
+  $q.on('keyup', (e)=>{ if(e.key==='Enter'){ state.q=$q.val()||''; state.page=1; load(); } });
+
+  // Modal
+  const dlg = new bootstrap.Modal('#dlg');
+  function openAdd(){
+    $('#cId').val('');
+    $('#cCode,#cName,#cStatus').val('');
+    $('#cLevel').val('HO');
+    $('#cStatusDate').val('');
+    $('#cParent').empty().trigger('change');
+    dlg.show();
+  }
+  
+  function openEdit(tr){
+    const id = tr.data('id');
+    const tds = tr.children('td');
+    $('#cId').val(id);
+    $('#cCode').val(tds.eq(1).text());
+    $('#cName').val(tds.eq(2).text());
+    $('#cLevel').val(tds.eq(3).text());
+    $('#cStatusDate').val(tds.eq(7).text() === '-' ? '' : tds.eq(7).text());
+  
+    // Parent prefill
+    const pCode = tds.eq(4).text();
+    const pName = tds.eq(5).text();
+    $('#cParent').empty();
+    if(pCode && pCode !== '-' && pName && pName !== '-'){
+      const opt = new Option(`${pCode} — ${pName} (HO)`, '', true, true);
+      $('#cParent').append(opt);
+    }
+  
+    // Status prefill (id + text)
+    const sId = tr.data('status-id');
+    const sName = tds.eq(6).text();
+    $('#cStatus').empty();
+    if(sId && sName && sName !== '-'){
+      const opt = new Option(sName, String(sId), true, true);
+      $('#cStatus').append(opt).trigger('change');
+    } else {
+      $('#cStatus').val(null).trigger('change');
+    }
+  
+    dlg.show();
+  }
+  
+
+  // Select2 for parents
+  sel2HO($('#cParent'));
+  sel2HO($('#bulkParent'));
+
+  // Add
+  $('#btnAdd').on('click', openAdd);
+
+  // Save
+  $('#btnSave').on('click', ()=>{
+    const statusId = $('#cStatus').val(); // select2 id
+    const payload = {
+      CustCode: $('#cCode').val(),
+      CustName: $('#cName').val(),
+      LevelType: $('#cLevel').val(),
+      ParentCustID: $('#cParent').val() || null,
+      //Status: $('#cStatus').val() || null,
+      StatusID: statusId ? parseInt(statusId) : null,
+      StatusDate: $('#cStatusDate').val() || null
+    };
+    const id = $('#cId').val();
+    const req = id
+      ? fetch(EP.update(id), { method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) })
+      : fetch(EP.create, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+    req.then(r=>r.json()).then(j=>{
+      if(j.ok===false){ alert(j.error||'Save failed'); return; }
+      dlg.hide(); load();
+    });
+  });
+
+  // Row actions
+  $tbody.on('click', '.act-edit', function(){
+    openEdit($(this).closest('tr'));
+  });
+  $tbody.on('click', '.act-del', function(){
+    const id = $(this).closest('tr').data('id');
+    if(!confirm('Delete this customer?')) return;
+    fetch(EP.del(id), {method:'DELETE'}).then(()=>load());
+  });
+  $tbody.on('click', '.act-parent', function(){
+    const tr = $(this).closest('tr');
+    const id = tr.data('id');
+    // inline parent picker in a prompt modal way
+    const parentId = $('#bulkParent').val();
+    if(!parentId){
+      alert('Pick a parent HO in the top-right "Parent" box, then click "Set Parent".\nOr use bulk buttons for multiple.');
+      return;
+    }
+    fetch(EP.setPar(id), { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ parent_id: parseInt(parentId) }) })
+      .then(r=>r.json()).then(j=>{
+        if(j.ok===false){ alert(j.error || 'Failed'); return; }
+        load();
+      });
+  });
+
+  // Bulk checkboxes
+  $('#chkAll').on('change', function(){
+    $('.rowchk').prop('checked', $(this).is(':checked'));
+  });
+
+  function _selectedIds(){
+    const ids = [];
+    $tbody.find('.rowchk:checked').each(function(){
+      ids.push($(this).closest('tr').data('id'));
+    });
+    return ids;
+  }
+
+  // Bulk set parent for selected (single endpoint per row to keep logic simple and safe)
+  $('#btnBulkSetParent').on('click', ()=>{
+    const parentId = $('#bulkParent').val();
+    if(!parentId){ alert('Select an HO in the Parent box'); return; }
+    const ids = _selectedIds();
+    if(!ids.length){ alert('Select at least one row'); return; }
+    Promise.all(ids.map(id => fetch(EP.setPar(id), {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ parent_id: parseInt(parentId) })
+    }))).then(()=>load());
+  });
+
+  // Bulk clear parent
+  $('#btnBulkClearParent').on('click', ()=>{
+    const ids = _selectedIds();
+    if(!ids.length){ alert('Select at least one row'); return; }
+    if(!confirm('Clear parent for selected branches?')) return;
+    Promise.all(ids.map(id => fetch(EP.setPar(id), {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ parent_id: null })
+    }))).then(()=>load());
+  });
+
+  // Bulk Excel
+  $('#btnTpl').on('click', ()=>{ const a=document.createElement('a'); a.href=EP.bulkTpl; document.body.appendChild(a); a.click(); a.remove(); });
+  $('#btnUpload').on('click', ()=>$('#fileUpload').val('').trigger('click'));
+  $('#fileUpload').on('change', function(){
+    const f = this.files[0]; if(!f) return;
+    const fd = new FormData(); fd.append('file', f);
+    fetch(EP.bulkUp, { method:'POST', body: fd })
+      .then(r=>r.json()).then(j=>{
+        if(j.ok===false){ alert(j.error||'Upload failed'); return; }
+        const msg = `Created=${j.created||0}, Updated=${j.updated||0}, Skipped=${j.skipped||0}`;
+        if((j.errors||[]).length){ console.table(j.errors); alert(msg + `\nErrors: ${j.errors.length} (see console)`); }
+        else { alert(msg); }
+        load();
+      }).catch(e=>alert('Upload error: '+e));
+  });
+
+  // Init
+  load();
+})();
+</script>
+{% endblock %}

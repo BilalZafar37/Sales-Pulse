@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% block title %}Use Profile · Stage Customer Sell-Out{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  <h3 class="mb-3">Use Profile to Stage Customer Sell-Out</h3>
+
+  <!-- Flash messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, msg in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+          {{ msg }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <form action="{{ url_for('sellout_profiles.use_profile') }}" method="post" enctype="multipart/form-data" id="useForm">
+    <div class="row g-3">
+      <!-- Customer filter (optional but helpful to shorten the profile list) -->
+      <div class="col-md-4">
+        <label class="form-label">Customer (filter)</label>
+        <select class="form-select" id="CustomerFilter">
+          <option value="">— All Customers —</option>
+          {% for c in customers %}
+            <option value="{{ c.CustomerID }}">{{ c.CustName }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- Profile (required) -->
+      <div class="col-md-8">
+        <label class="form-label">Profile</label>
+        <select class="form-select" name="ProfileID" id="ProfileID" required>
+          <option value="">— Select a Profile —</option>
+          {% for p in profiles %}
+            <option
+              value="{{ p.ProfileID }}"
+              data-customer="{{ p.CustomerID }}"
+              data-customer-name="{{ p.customer.CustName if p.customer else '' }}"
+              data-sheet="{{ p.SheetName or '' }}"
+              data-header="{{ p.HeaderRowIndex or '' }}"
+              data-start="{{ p.DataStartRow or '' }}"
+              {% if p.IsDefault %}data-is-default="1"{% endif %}
+            >
+              {{ p.ProfileName }}  —  {{ p.customer.CustName if p.customer else ('CID ' ~ p.CustomerID) }}
+              {% if p.IsDefault %} (Default){% endif %}
+            </option>
+          {% endfor %}
+        </select>
+        <div class="form-text">Pick the saved mapping profile for the customer’s Excel format.</div>
+      </div>
+    </div>
+
+    <!-- Profile quick info -->
+    <div id="ProfileInfo" class="mt-3 d-none">
+      <div class="card">
+        <div class="card-body py-2">
+          <div class="row g-3 small">
+            <div class="col-auto"><strong>Customer:</strong> <span id="piCustomer">—</span></div>
+            <div class="col-auto"><strong>Sheet:</strong> <span id="piSheet">—</span></div>
+            <div class="col-auto"><strong>Header Row:</strong> <span id="piHeader">—</span></div>
+            <div class="col-auto"><strong>Data Start:</strong> <span id="piStart">—</span></div>
+            <div class="col-auto"><span id="piDefaultBadge" class="badge bg-primary d-none">Default</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="my-4">
+
+    <!-- Batch metadata -->
+    <div class="row g-3">
+      <div class="col-md-3">
+        <label class="form-label">Upload Type</label>
+        <select class="form-select" name="UploadType">
+          <option value="Transactional" selected>Transactional</option>
+          <option value="Accumulative">Accumulative</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Level Type</label>
+        <select class="form-select" name="LevelType">
+          <option value="HO" selected>HO</option>
+          <option value="Branch">Branch</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Brand (optional)</label>
+        <input type="text" class="form-control" name="Brand" placeholder="e.g., Sony">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Document Date (legacy)</label>
+        <input type="date" class="form-control" name="DocumentDate">
+      </div>
+
+      <div class="col-md-3">
+        <label class="form-label">Period Start</label>
+        <input type="date" class="form-control" name="PeriodStart">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Period End</label>
+        <input type="date" class="form-control" name="PeriodEnd">
+      </div>
+    </div>
+
+    <div class="row g-3 mt-1">
+      <div class="col-md-6">
+        <label class="form-label">Customer File (.xlsx, .xlsm, .xltx, .xltm)</label>
+        <input type="file" class="form-control" name="file" accept=".xlsx,.xlsm,.xltx,.xltm" required>
+        <div class="form-text">Upload the customer’s Excel file as-is. The selected profile will parse it into staging.</div>
+      </div>
+    </div>
+
+    <div class="mt-4 d-flex gap-2">
+      <button class="btn btn-success" type="submit">Stage File</button>
+      <a class="btn btn-secondary" href="{{ url_for('sellout_profiles.list_profiles') }}">Back to Profiles</a>
+    </div>
+  </form>
+
+  <div class="mt-4">
+    <p class="small text-muted">
+      After staging, you’ll be redirected to a preview of <em>SP_SellOut_Staging</em> rows for this upload.
+      From there, you can review errors and (optionally) post to the ledger.
+    </p>
+  </div>
+</div>
+
+<script>
+  // Filter profiles by selected customer
+  const customerFilter = document.getElementById('CustomerFilter');
+  const profileSel = document.getElementById('ProfileID');
+  const piWrap = document.getElementById('ProfileInfo');
+  const piCustomer = document.getElementById('piCustomer');
+  const piSheet = document.getElementById('piSheet');
+  const piHeader = document.getElementById('piHeader');
+  const piStart = document.getElementById('piStart');
+  const piDefault = document.getElementById('piDefaultBadge');
+
+  function applyCustomerFilter() {
+    const cid = customerFilter.value || "";
+    const opts = profileSel.querySelectorAll('option');
+    const currentVal = profileSel.value;
+
+    opts.forEach(opt => {
+      if (!opt.value) return; // skip placeholder
+      const ocid = opt.dataset.customer || "";
+      // show if matches or filter empty
+      opt.hidden = (cid && ocid !== cid);
+    });
+
+    // if currently selected is hidden, reset
+    const currentOpt = profileSel.querySelector(`option[value="${currentVal}"]`);
+    if (currentOpt && currentOpt.hidden) {
+      profileSel.value = "";
+      showProfileInfo(); // reset info panel
+    }
+  }
+
+  function showProfileInfo() {
+    const opt = profileSel.selectedOptions[0];
+    if (!opt || !opt.value) {
+      piWrap.classList.add('d-none');
+      return;
+    }
+    piCustomer.textContent = opt.dataset.customerName || ('CID ' + (opt.dataset.customer || ''));
+    piSheet.textContent = opt.dataset.sheet || '—';
+    piHeader.textContent = opt.dataset.header || '—';
+    piStart.textContent = opt.dataset.start || '—';
+    if (opt.dataset.isDefault === "1") {
+      piDefault.classList.remove('d-none');
+    } else {
+      piDefault.classList.add('d-none');
+    }
+    piWrap.classList.remove('d-none');
+  }
+
+  customerFilter.addEventListener('change', applyCustomerFilter);
+  profileSel.addEventListener('change', showProfileInfo);
+
+  // initial state
+  applyCustomerFilter();
+  showProfileInfo();
+</script>
+{% endblock %}

@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SALESPULSE</title>
+
+  <!-- Bootstrap -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"/>
+
+  <!-- Select2 + Bootstrap5 theme -->
+  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet"/>
+
+  <!-- Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" crossorigin="anonymous"/>
+  <link rel="icon" href="./static/img/favicon.ico">
+
+  <link rel="stylesheet" href="./static/css/sidebar.css">
+  <script type="text/javascript" src="./static/js/app.js" defer></script> 
+
+  <!-- FilePond styles -->
+  <link href="https://unpkg.com/filepond/dist/filepond.min.css" rel="stylesheet" />
+
+  <style>
+    body { background: #1f1c2e; }
+    .wrapper {
+      box-sizing: border-box;
+      background-color: #2E2B41;
+      width: 95%;
+      max-width: 760px;
+      padding: 24px;
+      border-radius: 20px;
+      box-shadow: 5px 5px 15px rgba(0,0,0,0.3);
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      margin-top: 40px;
+      margin-bottom: 120px;
+    }
+    .main-div {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+      padding-bottom: 80px;
+    }
+    h3, h5, label { color: #fff; }
+    .button { background-color: #8672FF; color: #fff; }
+    .footer {
+      position: fixed; bottom: 0; left: 0; width: 100%;
+      background-color: #8672FF; color: #fff; text-align: left;
+      padding: 10px 20px; box-shadow: 0 -2px 10px #8672FF; z-index: 1000;
+      font-size: 14px;
+    }
+    .select2-container--bootstrap-5 .select2-selection {
+      min-height: 38px; /* align with form-control */
+    }
+    .card-dark { background: #2E2B41; border: 1px solid #3b3656; }
+    .text-muted-lite { color: #ddd; }
+
+    /* FilePond customizations */
+    /* Make FilePond stretch nicely */
+    #filepond { width: 100%; }
+
+    /* Transparent panel + bootstrap-like border */
+    .filepond--panel-root {
+      background: transparent !important;
+      box-shadow: none !important;
+      border-radius: .5rem !important;
+      border: 1px dashed var(--bs-border-color, #dee2e6) !important;
+    }
+
+    /* Label color aligns with Bootstrap secondary text */
+    .filepond--root .filepond--drop-label {
+      color: var(--bs-secondary-color, #6c757d) !important;
+    }
+
+    /* Focus ring (Bootstrap-ish) */
+    .filepond--root.filepond--hopper {
+      outline: 0;
+    }
+    .filepond--root.filepond--hopper:focus-within .filepond--panel-root {
+      border-color: var(--bs-primary, #0d6efd) !important;
+      box-shadow: 0 0 0 .25rem rgba(13,110,253,.25) !important;
+    }
+
+    /* Dark theme support */
+    [data-bs-theme="dark"] .filepond--panel-root {
+      border-color: var(--bs-border-color, #495057) !important;
+    }
+    [data-bs-theme="dark"] .filepond--root .filepond--drop-label {
+      color: var(--bs-secondary-color, #adb5bd) !important;
+    }
+    /* Remove the dashed border entirely */
+      .filepond--root .filepond--panel-root {
+        border: none !important;
+      }
+  </style>
+
+</head>
+<body>
+  <div class="d-flex">
+    {% include 'sidebar.html' %}
+    <div class="flex-grow-1 d-flex flex-column">
+      <main class="main-div">
+        <div class="wrapper">
+          <div class="mb-3 text-center">
+            <h3 class="mb-0">Sell-Out Upload</h3>
+            <small class="text-muted-lite">Select brand(s) and customer(s) to download templates and upload data.</small>
+          </div>
+
+          <!-- Controls -->
+          <div class="card card-dark mb-3">
+            <div class="card-body">
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label class="form-label">Brand<span class="text-danger" id="reqUser">*</span></label>
+                  <select id="brandSelect" class="form-select"></select>
+                  <div class="form-text text-muted-lite">Select 1 Brand.</div>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Customer<span class="text-danger" id="reqUser">*</span></label>
+                  <select id="customerSelect" class="form-select"></select>
+                  <div class="form-text text-muted-lite">Select 1 customer.</div>
+                </div>
+
+                <div class="col-md-4">
+                  <label class="form-label">Level Type</label>
+                  <select id="levelType" class="form-select">
+                    <option value="HO" selected>HO</option>
+                    <option value="Branch" disabled>Branch</option>
+                  </select>
+                </div>
+
+                <div class="col-md-4">
+                  <label class="form-label">Upload Type</label>
+                  <select id="uploadType" class="form-select">
+                    <option value="Company-Format" selected>MEC Format</option>
+                    <option value="Customer-Format" disabled>Customer Format</option>
+                  </select>
+                </div>
+
+                <div class="col-md-4">
+                  <label class="form-label">Uploaded By</label>
+                  <input id="createdBy" class="form-control" value="{{session['username']}}" disabled>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card card-dark mb-3">
+            <div class="card-body">
+              <label for="filepond" class="form-label">Supporting Documents<span class="text-danger" id="reqUser">*</span></label>
+              <input type="file" name="filepond" id="filepond" multiple required/>
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div class="d-grid gap-2 d-md-flex justify-content-md-end" style="flex-direction: column;">
+
+            <button id="downloadBtn" class="btn button">
+              <i class="fa-solid fa-circle-down me-2"></i>Download Excel Template
+            </button>
+            <button id="uploadBtn" class="btn btn-success">
+              <i class="fa-solid fa-cloud-arrow-up me-2"></i>Upload Excel/CSV
+            </button>
+          </div>
+
+          <!-- Status -->
+          <div id="statusArea" class="mt-3"></div>
+
+          <!-- Hidden upload form -->
+          <form id="uploadForm" action="/sell-out/upload" method="post" enctype="multipart/form-data" style="display:none">
+            <input type="hidden" name="customer_id" id="customer_id">
+            <input type="hidden" name="level_type" id="level_type">
+            <input type="hidden" name="upload_type" id="upload_type">
+            <input type="hidden" name="brand" id="brand">
+            <input type="hidden" name="created_by" id="created_by">
+            <input type="file" name="file" id="fileInput" accept=".xlsx,.xls,.csv">
+          </form>
+        </div>
+        <footer class="footer">@Modern Electronics</footer>
+      </main>
+    </div>
+  </div>
+
+<!-- jQuery (needed by Select2) -->
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<!-- Bootstrap bundle -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<!-- Select2 -->
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<!-- FilePond core library -->
+<script src="https://unpkg.com/filepond/dist/filepond.min.js"></script>
+
+<script>
+  let currentUploadId = null;
+  const $brands    = $('#brandSelect');     // your Select2 for brands
+  const $customers = $('#customerSelect');  // your Select2 for customers
+  let pond = null;
+
+  function selectionsValid() {
+    const b = $brands.val()    || '';
+    const c = $customers.val() || '';
+    return b && c;
+  }
+
+  function getCurrentSelection() {
+    const brand = ($brands.val() || [])[0] || null;
+
+    // Get customer id + display name from the selected option
+    const custId = ($customers.val() || [])[0] || null;
+    const custOption = custId ? $customers.find(`option[value="${custId}"]`).text() : null;
+    // Option text is like "Acme Retail (CUST123) – HO" per your earlier code; send a clean name too if you want
+    const custName = custOption ? custOption.replace(/\s*–\s*HO|\s*–\s*Branch/i, '').trim() : null;
+
+    return { brand, customer_id: custId, customer_name: custName };
+  }
+
+  function destroyPond() {
+    if (pond) {
+      try { pond.removeFiles(); } catch(e) {}
+      try { pond.destroy(); } catch(e) {}
+      pond = null;
+    }
+    $('#filepond').prop('disabled', true);
+  }
+
+
+  function makeInitialPondOptions() {
+    return {
+      credits: false,
+      allowMultiple: true,
+      maxFileSize: '20MB',
+      instantUpload: false,          // <-- queued locally, no network yet
+      labelIdle: 'Drag & Drop your files or <span class="filepond--label-action">Browse</span>',
+    };
+  }
+
+  function ensurePond() {
+    // enable/disable input based on Brand + Customer if you want
+    const ok = ($brands.val() || '') && ($customers.val() || '');
+    $('#filepond').prop('disabled', !ok);
+
+    if (!ok) {
+      if (pond) { try{ pond.destroy(); }catch(e){} pond=null; }
+      return;
+    }
+
+    if (!pond) {
+      pond = FilePond.create(document.querySelector('#filepond'), makeInitialPondOptions());
+    }
+  }
+    // Re-evaluate when selections change
+    $brands.on('change', ensurePond);
+    $customers.on('change', ensurePond);
+
+    // Initial state
+    $(function () {
+      ensurePond(); // will keep disabled until exactly one brand + one customer are selected
+    });
+</script>
+
+<script>
+  //const $brands    = $('#brandSelect');
+  //const $customers = $('#customerSelect');
+  const $download  = $('#downloadBtn');
+  const $upload    = $('#uploadBtn');
+  const $status    = $('#statusArea');
+
+  // Select2 init (multi for both)
+  function initSelect2() {
+    $brands.select2({
+      theme: 'bootstrap-5',
+      placeholder: 'Select brand(s)',
+      width: '100%',
+      allowClear: true,
+      //multiple: false,
+      closeOnSelect: true
+    });
+    $customers.select2({
+      theme: 'bootstrap-5',
+      placeholder: 'Select customer(s)',
+      width: '100%',
+      allowClear: true,
+      //multiple: false,
+      closeOnSelect: true
+    });
+  }
+
+  function showStatus(type, html) {
+    $status.html(
+      `<div class="alert alert-${type} alert-dismissible fade show" role="alert">
+         ${html}
+         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+       </div>`
+    );
+  }
+
+  // Fetch choices from backend
+  async function loadChoices() {
+    try {
+      const res = await fetch('/sell-out/choices');
+      if (!res.ok) throw new Error('Failed to load choices');
+      const data = await res.json();
+
+      // Brands (array of {name})
+      $brands.empty();
+      (data.brands || []).forEach(b => {
+        $brands.append(new Option(b.name, b.name));
+      });
+
+      // Customers (array of {id, code, name, level})
+      $customers.empty(); 
+      (data.customers || []).forEach(c => {
+        const label = `${c.name} (${c.code})${c.level ? ' – ' + c.level : ''}`;
+        $customers.append(new Option(label, c.id));
+      });
+
+      // refresh Select2
+      $brands.trigger('change');
+      $customers.trigger('change');
+
+    } catch (e) {
+      showStatus('danger', 'Could not load brands/customers. Please refresh.');
+      console.error(e);
+    }
+  }
+
+  // Download templates for each (brand × customer)
+  function handleDownload() {
+    const brand = $brands.val() || null;
+    const cust  = $customers.val() || null;
+    if (!brand || !cust) {
+      showStatus('warning', 'Please select both brand and customer.');
+      return;
+    }
+
+    //let count = 0;
+    //for (const b of brands) {
+    //  for (const c of custs) {
+    const url = `/sell-out/template?brand=${encodeURIComponent(brand)}&customer_id=${encodeURIComponent(cust)}`;
+    // Open in a new window/tab to trigger downloads for each combo
+    window.open(url, '_blank');
+    //count++;
+      //}
+    //}
+    showStatus('info', `Triggered template download(s).`);
+  }
+
+  // Upload: enforce exactly ONE brand + ONE customer
+  function handleUploadClick() {
+    const brand = $brands.val() || null;
+    const cust  = $customers.val() || null;
+    if (!brand || !cust) {
+      showStatus('warning', 'Please select both brand and customer.');
+      return;
+    }
+
+    // ⚠️ optional guard
+    if (!pond || pond.getFiles().filter(f => !f.removed).length === 0) {
+      showStatus('warning', 'Please add at least one supporting document first.');
+      return;
+    }
+
+    // set hidden fields and trigger Excel chooser
+    $('#brand').val(brand);
+    $('#customer_id').val(cust);
+    $('#level_type').val($('#levelType').val());
+    $('#upload_type').val($('#uploadType').val());
+    $('#created_by').val($('#createdBy').val() || '');
+    $('#fileInput').click();
+  }
+
+
+  // Submit the upload via fetch for better UX
+  async function handleFileChosen(ev) {
+    const file = ev.target.files[0];
+    if (!file) return;
+
+    const form = document.getElementById('uploadForm');
+    const fd = new FormData(form);
+
+    $upload.prop('disabled', true);
+    $download.prop('disabled', true);
+
+    try {
+      const res  = await fetch(form.action, { method: 'POST', body: fd });
+      const json = await res.json();
+
+      if (!res.ok || !json.ok) {
+        showStatus('danger', `<strong>Upload failed:</strong> ${(json && json.error) ? json.error : 'Upload failed'}`);
+        return;
+      }
+
+      // ✅ main sell-out done
+      currentUploadId = json.upload_id;
+
+      showStatus('success',
+        `Upload <strong>#${json.upload_id}</strong> succeeded. Period <strong>${json.period[0]}</strong> to <strong>${json.period[1]}</strong>. ` +
+        `Inserted <strong>${json.inserted}</strong> rows; deactivated <strong>${json.deactivated}</strong>.`
+      );
+
+      // 🔗 Now wire FilePond to the server with the fresh upload_id
+      if (pond && pond.getFiles().length > 0) {
+        pond.setOptions({
+          server: {
+            process: {
+              url: '/sell_out_uploads/upload-attachment',
+              method: 'POST',
+              ondata: (formData) => {
+                // ensure fresh id is attached
+                formData.delete('upload_id');
+                formData.append('upload_id', currentUploadId);
+
+                // optional: also send brand/customer for foldering
+                const brand = $brands.val() || null;
+                const cust  = $customers.val() || null;
+                const custText = cust ? $customers.find(`option[value="${cust}"]`).text() : null;
+
+                if (brand) formData.append('brand', brand);
+                if (cust)  formData.append('customer_id', cust);
+                if (custText) formData.append('customer_name', custText.replace(/\s*–\s*(HO|Branch)$/i,'').trim());
+
+                return formData;
+              }
+            },
+            revert: '/sell_out_uploads/upload-attachment/revert',
+            load:   '/sell_out_uploads/upload-attachment/load/',
+            fetch:  '/sell_out_uploads/upload-attachment/fetch/'
+          }
+        });
+
+        // 🚀 push all queued attachments now
+        await pond.processFiles();
+
+        const okCount = pond.getFiles().filter(f => f.status === FilePond.FileStatus.PROCESSING_COMPLETE).length;
+        if (okCount === 0) {
+          showStatus('warning', 'No supporting documents were uploaded. You can add them now or later.');
+        } else {
+          showStatus('success', `Uploaded ${okCount} supporting document(s).`);
+        }
+      }
+
+    } catch (e) {
+      console.error(e);
+      showStatus('danger', 'Unexpected error while uploading.');
+    } finally {
+      ev.target.value = '';
+      $upload.prop('disabled', false);
+      $download.prop('disabled', false);
+    }
+  }
+
+
+  // Init
+  $(async function () {
+    initSelect2();
+    await loadChoices();
+
+    $('#downloadBtn').on('click', handleDownload);
+    $('#uploadBtn').on('click', handleUploadClick);
+    $('#fileInput').on('change', handleFileChosen);
+  });
+</script>
+</body>
+</html>

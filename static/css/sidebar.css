@@ -1,0 +1,289 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap');
+
+:root{
+  --bg: #0f1117;
+  --bg-2: #151924;
+  --grad-1:#1f2432;
+  --grad-2:#0f1117;
+  --brand:#6c5ce7;          /* accent */
+  --brand-2:#00e5ff;        /* subtle neon */
+  --text:#e6e6ea;
+  --muted:#9aa4b2;
+  --surface: rgba(255,255,255,.06);
+  --surface-2: rgba(255,255,255,.10);
+  --ring: rgba(108,92,231,.32);
+  --shadow: 0 10px 30px rgba(0,0,0,.35);
+  --radius: 14px;
+  --speed: 220ms;
+
+  /* NEW: logo support — match your sidebar icon size (22px by default) */
+  --sp-icon-size: 22px;
+}
+
+#sidebar label{ color: white !important;}
+
+*{box-sizing:border-box; margin:0; padding:0;}
+/* body{font-family:Poppins,system-ui,-apple-system,Segoe UI,Roboto,Arial;background:linear-gradient(120deg,var(--grad-1),var(--grad-2));color:var(--text);} */
+
+/* ===== SIDEBAR ===== */
+#sidebar{
+  position:sticky; top:0; height:100vh;
+  width:280px; padding:14px;
+  background: linear-gradient(120deg,var(--grad-1),var(--grad-2));
+  color:var(--text);
+  backdrop-filter: blur(10px);
+  border-right: 1px solid rgba(255,255,255,.06);
+  box-shadow: var(--shadow);
+  transition: width var(--speed) ease;
+  overflow:hidden;
+}
+#sidebar.close{ width:84px; overflow: visible; }
+
+/* --- header: keep toggle visible, hide the logo text --- */
+#sidebar.close .logo{ display: none; }   /* legacy text logo (if present) */
+#sidebar .logo-row{ height: 44px; }
+#sidebar.close .logo-row{ justify-content: space-between; }  /* keep heart left + toggle right */
+#sidebar.close #toggle-btn{ 
+  margin-left: 0; 
+  position: relative; 
+  z-index: 10;                         
+}
+
+/* NEW: logo support */
+#sidebar .logo-row{
+  display:flex; 
+  align-items:center; 
+  justify-content:space-between; 
+  gap:.5rem;
+  margin-bottom:10px;
+}
+#sidebar .logo-row .brand{
+  display:flex; align-items:center; gap:.5rem;
+  min-width:0; text-decoration:none; color:inherit;
+}
+#sidebar .logo-row .logo-full{
+  height:28px; 
+  width:190px; 
+  display:block; 
+  user-select:none;
+}
+#sidebar .logo-row .logo-icon{
+  width:var(--sp-icon-size); height:var(--sp-icon-size);
+  display:none; object-fit:cover; object-position:left center;
+  border-radius:6px; user-select:none;
+}
+#sidebar.close .logo-row .logo-full{ display:none; }
+#sidebar.close .logo-row .logo-icon{ display:block; }
+
+#sidebar ul{list-style:none; padding:0; margin:0;}
+#sidebar li{ position:relative; }
+
+/* legacy text logo styling (kept; harmless if unused) */
+#sidebar .logo{
+  font-weight:700; font-size:14px; letter-spacing:.6px;
+  padding:10px 12px; border-radius:12px;
+  background:var(--surface);
+  border:1px solid rgba(255,255,255,.06);
+}
+#sidebar .section-title{
+  font-size:11px; letter-spacing:.12em; color:var(--muted);
+  padding:14px 10px 6px 12px; opacity:.9;
+}
+
+#toggle-btn{
+  margin-left:auto; cursor:pointer; border:none; 
+  background:var(--surface);
+  padding:10px; border-radius:12px; color:var(--text);
+  transition: transform var(--speed), background var(--speed);
+}
+#toggle-btn:hover{ background:var(--surface-2); }
+
+/* items */
+#sidebar a, #sidebar .dropdown-btn, #sidebar .logo{
+  display:flex; align-items:center; gap:.85rem;
+  line-height:1; padding:12px 12px; border-radius:12px;
+  color:var(--text); text-decoration:none; white-space:nowrap;
+  transition: background var(--speed), color var(--speed), box-shadow var(--speed);
+}
+#sidebar svg{flex:0 0 22px; height:22px; width:22px; fill: currentColor; opacity:.95}
+
+/* fix: NO WHITE BUTTONS */
+#sidebar .dropdown-btn{
+  background: transparent !important;
+  border: 0 !important;
+  appearance: none; -webkit-appearance:none;
+}
+
+/* hover tactile */
+#sidebar a:hover, 
+#sidebar .dropdown-btn:hover{
+  background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06), inset 0 -1px 0 rgba(0,0,0,.25);
+}
+
+/* active menu */
+#sidebar li.active > a{
+  background: linear-gradient(90deg, rgba(108,92,231,.25), rgba(0,229,255,.18));
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+/* open parent tactile */
+.has-flyout.open > .dropdown-btn{
+  background: linear-gradient(180deg, rgba(108,92,231,.22), rgba(0,229,255,.10));
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+/* chevron */
+.dropdown-btn .chev{margin-left:auto; transition: transform var(--speed);}
+.dropdown-btn.rotate .chev{ transform: rotate(90deg); }
+
+/* label hide in collapsed */
+#sidebar.close .text{ display:none; }
+
+/* ===== SUB-MENUS + CONNECTOR LINES — SOFTER, ROUNDED ===== */
+.sub-menu{
+  display:grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--speed) ease;
+  margin-left: 18px;
+  padding-left: 28px;            /* space for spine + elbow */
+  position: relative;
+  isolation: isolate;            /* so the spine Z-layer behaves */
+}
+.sub-menu > div{ overflow:hidden; }
+.sub-menu.show{ grid-template-rows: 1fr; }
+
+/* vertical spine (rounded ends + dual tone + soft glow) */
+.sub-menu.show::before{
+  content:"";
+  position:absolute;
+  left: 26px;                    /* spine x */
+  top: 16px;                     /* add padding so ends aren’t “poking” */
+  bottom: 16px;
+  width: 2px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.28), rgba(255,255,255,.12));
+  border-radius: 9999px;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,.04) inset,
+    0 0 8px rgba(108,92,231,.15); /* gentle brand glow */
+  z-index: 0;
+}
+
+/* each item sits above the spine */
+.sub-menu > div > li{
+  position: relative;
+  padding: 8px 0;                /* vertical rhythm -> nicer end caps */
+  z-index: 1;
+}
+
+/* rounded elbow from spine to item */
+.sub-menu > div > li::before{
+  content:"";
+  position:absolute;
+  left: 0px;                    /* start on spine */
+  top: calc(50% - 7px);
+  width: 14px; height: 14px;     /* elbow size */
+  border-left: 2px solid rgba(255,255,255,.24);
+  border-bottom: 2px solid rgba(255,255,255,.24);
+  border-bottom-left-radius: 10px;  /* the “curve” */
+  /* soft highlight on the elbow */
+  box-shadow: 0 0 0 1px rgba(255,255,255,.03);
+}
+
+/* tiny node at the joint for a tactile feel */
+.sub-menu > div > li::after{
+  content:"";
+  position:absolute;
+  left: 0px;
+  top: 50%;
+  width: 6px; height: 6px;
+  transform: translate(-50%,-50%);
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 40% 40%, #bcd2ff 0%, #6c5ce7 65%, #00e5ff 100%);
+  box-shadow:
+    0 0 0 2px rgba(15,17,23,.9),       /* cut into the background slightly */
+    0 0 6px rgba(108,92,231,.35);      /* glow */
+}
+
+/* last child: shorten bottom part of the spine visually (nicer ending) */
+.sub-menu > div > li:last-child{ padding-bottom: 10px; }
+.sub-menu > div > li:first-child{ padding-top: 10px; }
+
+/* submenu links */
+.sub-menu a{
+  display:flex; align-items:center;
+  padding-left: 46px;            /* clear the elbow */
+  color: var(--muted);
+}
+.sub-menu a:hover{ color: var(--text); }
+
+/* small connector from parent button to the spine (also rounded) */
+.has-flyout.open > .dropdown-btn{
+  position: relative;
+}
+.has-flyout.open > .dropdown-btn::after{
+  content:"";
+  position:absolute;
+  left: 26px; top: calc(100% - 2px);
+  width: 2px; height: 12px;
+  background: linear-gradient(180deg, rgba(255,255,255,.28), rgba(255,255,255,.12));
+  border-radius: 9999px;
+  box-shadow: 0 0 6px rgba(108,92,231,.2);
+  z-index: 0;
+}
+
+
+/* ===== BADGES ===== */
+.badge{
+  margin-left:auto; font-size:11px; font-weight:600;
+  background: linear-gradient(90deg, var(--brand), var(--brand-2));
+  padding:3px 7px; border-radius:999px; color:#0e0f14;
+  box-shadow:0 1px 0 rgba(255,255,255,.25) inset;
+}
+
+/* parent badge visible when closed; hides when open */
+.has-flyout .badge-parent{ display:inline-flex; }
+.has-flyout.open .badge-parent{ display:none; }
+
+/* child badges hidden by default, visible when open */
+.has-flyout .badge-child{ display:none; margin-left:auto; }
+.has-flyout.open .badge-child{ display:inline-flex; }
+
+/* keep parent badge visible on mini rail */
+#sidebar.close .badge-parent{ display:inline-flex; }
+
+/* ===== FLYOUT (collapsed sidebar) ===== */
+#sidebar.close li.has-flyout:hover .flyout{
+  opacity:1; transform:translateX(0); pointer-events:auto;
+}
+.flyout{
+  position:absolute; left:82px; top:0; width:260px; padding:10px;
+  background:linear-gradient(180deg, rgba(22,26,36,.98), rgba(18,20,30,.98));
+  border:1px solid rgba(255,255,255,.06);
+  border-radius:12px; box-shadow: var(--shadow);
+  opacity:0; transform: translateX(8px);
+  transition: opacity var(--speed), transform var(--speed);
+  pointer-events:none; z-index:9;
+}
+.flyout .title{font-size:12px; color:var(--muted); padding:6px 10px 4px;}
+.flyout .sub-menu{margin-left:0;}
+.flyout .sub-menu a{padding-left:12px;}
+
+/* ===== MOBILE: bottom bar ===== */
+@media (max-width: 800px){
+  #sidebar{ height:64px; width:100%; bottom:0; top:auto; position:fixed; display:block; padding:6px 8px; }
+  #sidebar ul{ display:grid; grid-auto-columns:64px; grid-auto-flow:column; overflow-x:auto; }
+  #sidebar .logo-row, #sidebar .section-title{ display:none; }
+  #sidebar .sub-menu.show{
+    position:fixed; left:0; right:0; bottom:64px;
+    background:var(--bg-2); border-top:1px solid rgba(255,255,255,.06);
+    padding:8px 10px; border-radius: 14px 14px 0 0;
+  }
+  .flyout{display:none;}
+}
+
+/* reduced motion */
+@media (prefers-reduced-motion: reduce){
+  #sidebar, .dropdown-btn .chev, .sub-menu, .flyout{ transition:none; }
+}

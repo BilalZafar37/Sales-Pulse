@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if mode=='edit' else 'Create' }} Sell-Out Profile{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  <h3 class="mb-3">{{ 'Edit' if mode=='edit' else 'Create' }} Customer Sell-Out Profile</h3>
+
+  <!-- Flash messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, msg in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+          {{ msg }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <!-- Step 1: Upload or reuse file -->
+  {% if mode == 'create' %}
+  <form action="{{ url_for('sellout_profiles.detect') }}" method="post" enctype="multipart/form-data" class="mb-4">
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="form-label">Customer</label>
+        <select class="form-select" name="CustomerID" required>
+          {% for c in customers %}
+            <option value="{{ c.CustomerID }}" {% if selected_customer_id==c.CustomerID %}selected{% endif %}>
+              {{ c.CustName }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Sample File</label>
+        <input type="file" class="form-control" name="file" required>
+      </div>
+      <div class="col-md-4 d-flex align-items-end">
+        <button class="btn btn-primary">Auto-Detect Structure</button>
+      </div>
+    </div>
+  </form>
+  {% endif %}
+
+  <!-- Step 2: Define mapping -->
+  {% if mapping %}
+  <form action="{{ url_for('sellout_profiles.preview') }}" method="post" id="mappingForm">
+    <input type="hidden" name="Token" value="{{ token or '' }}">
+    <input type="hidden" name="MappingJSON" id="MappingJSON">
+
+    <div class="row g-3 mb-3">
+      <div class="col-md-4">
+        <label class="form-label">Customer</label>
+        <select class="form-select" name="CustomerID" required>
+          {% for c in customers %}
+            <option value="{{ c.CustomerID }}" {% if selected_customer_id==c.CustomerID %}selected{% endif %}>
+              {{ c.CustName }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Profile Name</label>
+        <input class="form-control" name="ProfileName"
+               value="{{ profile.ProfileName if profile else '' }}"
+               placeholder="e.g., Carrefour – SellOut v1" required>
+      </div>
+      <div class="col-md-2 form-check mt-4">
+        <input class="form-check-input" type="checkbox" id="IsDefault" name="IsDefault"
+               {% if profile and profile.IsDefault %}checked{% endif %}>
+        <label class="form-check-label" for="IsDefault">Default</label>
+      </div>
+    </div>
+
+    <hr>
+
+    <!-- Sheet & header controls -->
+    <div class="row g-3 align-items-end mb-3">
+      <div class="col-md-3">
+        <label class="form-label">Sheet</label>
+        <select id="SheetSelect" class="form-select"></select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Header Row</label>
+        <input id="HeaderRow" type="number" class="form-control" min="1"
+               value="{{ suggested.header_row if suggested else 1 }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Data Start Row</label>
+        <input id="DataStartRow" type="number" class="form-control" min="1"
+               value="{{ suggested.data_start_row if suggested else 2 }}">
+      </div>
+      <div class="col-md-2">
+        <button type="button" id="RefreshBtn" class="btn btn-outline-secondary">Refresh Columns</button>
+      </div>
+    </div>
+
+    <!-- Column mapping -->
+    <div class="p-3 border rounded mb-3">
+      <div class="row g-3">
+        {% set fields = [
+          ('date','Date'),
+          ('article','Article'),
+          ('qty','Quantity'),
+          ('customer_sku','Customer SKU'),
+          ('store','Store'),
+          ('region','Region'),
+          ('invoice','Invoice No'),
+          ('brand','Brand'),
+          ('site','Site'),
+        ] %}
+        {% for key,label in fields %}
+          <div class="col-md-3">
+            <label class="form-label">{{ label }} Column</label>
+            <select class="form-select map-select" data-field="{{ key }}" id="map_{{ key }}"></select>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Buttons -->
+    <div class="mt-3">
+      <button type="submit" class="btn btn-primary" onclick="return serializeMappingIntoHidden()">Preview</button>
+      <button formaction="{{ url_for('sellout_profiles.save_profile') }}" class="btn btn-success"
+              onclick="return serializeMappingIntoHidden()">Save Profile</button>
+      <a href="{{ url_for('sellout_profiles.list_profiles') }}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+  {% endif %}
+</div>
+
+<!-- Script to handle mapping -->
+<script>
+const token = "{{ token or '' }}";
+let current = JSON.parse('{{ mapping|safe }}');
+
+function serializeMapping() {
+  const map = {
+    sheet: document.getElementById('SheetSelect').value,
+    header_row: parseInt(document.getElementById('HeaderRow').value || '1'),
+    data_start_row: parseInt(document.getElementById('DataStartRow').value || '2'),
+    fields: {}
+  };
+  document.querySelectorAll('.map-select').forEach(sel => {
+    const field = sel.dataset.field;
+    const col = sel.value ? parseInt(sel.value) : null;
+    map.fields[field] = { col: col };
+  });
+  return map;
+}
+function serializeMappingIntoHidden(){
+  const map = serializeMapping();
+  document.getElementById('MappingJSON').value = JSON.stringify(map);
+  return true;
+}
+
+async function introspect() {
+  if (!token) return;
+  const payload = {
+    token,
+    sheet: document.getElementById('SheetSelect').value,
+    header_row: parseInt(document.getElementById('HeaderRow').value || '1'),
+  };
+  const res = await fetch("{{ url_for('sellout_profiles.introspect') }}", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(payload)
+  });
+  const j = await res.json();
+  if(!j.ok){ alert(j.error || "Failed"); return; }
+
+  // populate sheets
+  const sh = document.getElementById('SheetSelect');
+  sh.innerHTML = "";
+  j.sheets.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s; opt.textContent = s; if(s===j.sheet) opt.selected = true;
+    sh.appendChild(opt);
+  });
+
+  // build options
+  const options = j.columns.map(c => {
+    const text = c.excel + (c.header ? (" — " + c.header) : "");
+    return `<option value="${c.col}">${text}</option>`;
+  }).join("");
+
+  document.querySelectorAll('.map-select').forEach(sel=>{
+    const f = sel.dataset.field;
+    sel.innerHTML = `<option value="">—</option>` + options;
+    const pre = (current.fields && current.fields[f] && current.fields[f].col) ? current.fields[f].col : null;
+    if(pre){ sel.value = pre; }
+  });
+}
+
+document.getElementById('RefreshBtn').addEventListener('click', () => {
+  introspect();
+});
+window.addEventListener('DOMContentLoaded', () => introspect());
+</script>
+{% endblock %}

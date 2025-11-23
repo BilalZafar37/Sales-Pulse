@@ -1,0 +1,868 @@
+{% extends "base.html" %}
+{% block title %}Masters{% endblock %}
+
+{% block styles %}
+
+.modal-content,
+.modal-content .modal-title,
+.modal-content .form-label,
+.modal-content .form-text .form-label{
+  color: #212529;
+}
+
+/* Keep Select2 above Bootstrap modal (modal is ~1055) */
+.select2-container { z-index: 2000 !important; }
+.select2-container .select2-dropdown { z-index: 2001 !important; }
+{% endblock %}
+
+
+{% block content %}
+<div class="container-fluid py-3">
+  <h4 class="mb-3">Masters</h4>
+
+  <ul class="nav nav-tabs" role="tablist">
+    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabCustomers" type="button">Customers</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabSkus" type="button">SKUs</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabCategories" type="button">Categories</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabMap" type="button">Customer ↔ SKU Map</button></li>
+  </ul>
+
+  <div class="tab-content pt-3">
+    <!-- Customers -->
+    <div class="tab-pane fade show active" id="tabCustomers">
+      <div class="d-flex gap-2 mb-2 align-items-center">
+        <input id="cQ" class="form-control" placeholder="Search code or name">
+        <button id="cAdd" class="btn btn-primary">Add</button>
+    
+        <!-- Excel buttons (Customers) -->
+        <div class="ms-auto d-flex gap-2">
+          <button class="btn btn-outline-secondary dl-tpl" data-master="customers">Download template</button>
+          <button class="btn btn-outline-primary up-excel" data-master="customers">Upload Excel</button>
+          <input type="file" class="d-none up-file" accept=".xlsx" />
+        </div>
+      </div>
+    
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead class="table-light"><tr><th>Code</th><th>Name</th><th>Level</th><th>Parent Code</th><th style="width:80px;"></th></tr></thead>
+          <tbody id="cBody"><tr><td colspan="5" class="text-muted">Loading…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="d-flex justify-content-between align-items-center">
+        <small id="cPageInfo" class="text-muted"></small>
+        <div id="cPager" class="btn-group"></div>
+      </div>
+    </div>
+    
+    <!-- SKUs -->
+    <div class="tab-pane fade" id="tabSkus">
+      <div class="row g-2 mb-2 align-items-center">
+        <div class="col-md-3"><input id="sQ" class="form-control" placeholder="Search code or description"></div>
+        <div class="col-md-3"><input id="sBrand" class="form-control" placeholder="Brand"></div>
+        <div class="col-md-3"><select id="sCatSel" class="form-select" data-placeholder="Filter by Category"></select></div>
+        <div class="col-md-3 d-flex gap-2">
+          <button id="sRefresh" class="btn btn-outline-secondary">Refresh</button>
+          <button id="sClear" class="btn btn-outline-secondary">Clear</button>
+          <button id="sAdd" class="btn btn-primary">Add</button>
+    
+          <!-- Excel buttons (SKUs) -->
+          <div class="ms-auto d-flex gap-2">
+            <button class="btn btn-outline-secondary dl-tpl" data-master="skus">Download template</button>
+            <button class="btn btn-outline-primary up-excel" data-master="skus">Upload Excel</button>
+            <input type="file" class="d-none up-file" accept=".xlsx" />
+          </div>
+        </div>
+      </div>
+    
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead class="table-light">
+            <tr><th>Article</th><th>Description</th><th>Brand</th><th>Category (Code — Name)</th><th style="width:80px;"></th></tr>
+          </thead>
+          <tbody id="sBody"><tr><td colspan="5" class="text-muted">Loading…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="d-flex justify-content-between align-items-center">
+        <small id="sPageInfo" class="text-muted"></small>
+        <div id="sPager" class="btn-group"></div>
+      </div>
+    </div>
+    
+    <!-- Categories -->
+    <div class="tab-pane fade" id="tabCategories">
+      <div class="d-flex gap-2 mb-2 align-items-center">
+        <input id="catQ" class="form-control" placeholder="Search CatCode / CatName / CatDesc / SubCat">
+        <button id="catAdd" class="btn btn-primary">Add</button>
+    
+        <!-- Excel buttons (Categories) -->
+        <div class="ms-auto d-flex gap-2">
+          <button class="btn btn-outline-secondary dl-tpl" data-master="categories">Download template</button>
+          <button class="btn btn-outline-primary up-excel" data-master="categories">Upload Excel</button>
+          <input type="file" class="d-none up-file" accept=".xlsx" />
+        </div>
+      </div>
+    
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>CatCode</th><th>CatName</th><th>CatDesc</th><th>SubCat</th><th class="text-center"># SKUs</th><th style="width:120px;"></th>
+            </tr>
+          </thead>
+          <tbody id="catBody"><tr><td colspan="6" class="text-muted">Loading…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="d-flex justify-content-between align-items-center">
+        <small id="catPageInfo" class="text-muted"></small>
+        <div id="catPager" class="btn-group"></div>
+      </div>
+    </div>
+    
+    <!-- Mapping -->
+    <div class="tab-pane fade" id="tabMap">
+      <div class="d-flex gap-2 align-items-center mb-2">
+        <select id="mCustomer" class="form-select" style="max-width:420px"></select>
+        <button id="mAdd" class="btn btn-primary">Add Mapping</button>
+        <button id="mPaste" class="btn btn-outline-secondary">Paste</button>
+    
+        <!-- Excel buttons (Mappings) -->
+        <div class="ms-auto d-flex gap-2">
+          <button class="btn btn-outline-secondary dl-tpl" data-master="mappings">Download template</button>
+          <button class="btn btn-outline-primary up-excel" data-master="mappings">Upload Excel</button>
+          <input type="file" class="d-none up-file" accept=".xlsx" />
+        </div>
+      </div>
+    
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead class="table-light">
+            <tr><th>CustSKUCode</th><th>Article</th><th>Desc</th><th>Brand</th><th>Category (Code — Name)</th><th style="width:80px;"></th></tr>
+          </thead>
+          <tbody id="mBody"><tr><td colspan="6" class="text-muted">Select a customer</td></tr></tbody>
+        </table>
+      </div>
+      <div class="d-flex justify-content-between align-items-center">
+        <small id="mPageInfo" class="text-muted"></small>
+        <div id="mPager" class="btn-group"></div>
+      </div>
+    </div>
+    
+  </div>
+</div>
+
+<!-- Customer Modal -->
+<div class="modal fade" id="dlgCustomer" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title">Customer</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <input type="hidden" id="cId">
+    <div class="mb-2"><label class="form-label">Code</label><input id="cCode" class="form-control"></div>
+    <div class="mb-2"><label class="form-label">Name</label><input id="cName" class="form-control"></div>
+    <div class="mb-2"><label class="form-label">Level</label>
+      <select id="cLevel" class="form-select"><option>HO</option><option>Branch</option></select>
+    </div>
+    <div><label class="form-label">Parent (optional)</label>
+      <select id="cParent" class="form-select"></select>
+    </div>
+  </div>
+  <div class="modal-footer"><button id="cSave" class="btn btn-primary">Save</button></div>
+</div></div></div>
+
+<!-- SKU Modal -->
+<div class="modal fade" id="dlgSku" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title">SKU</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <input type="hidden" id="sId">
+    <div class="mb-2"><label class="form-label">Article</label><input id="sArticle" class="form-control"></div>
+    <div class="mb-2"><label class="form-label">Description</label><input id="sDesc" class="form-control"></div>
+    <div class="mb-2"><label class="form-label">Brand</label><input id="sBrandEdit" class="form-control"></div>
+    <div class="mb-2"><label class="form-label">Category</label>
+      <select id="sCatSelect" class="form-select" data-placeholder="Select Category"></select>
+      <div class="form-text" id="sCatInfo"></div>
+    </div>
+  </div>
+  <div class="modal-footer"><button id="sSave" class="btn btn-primary">Save</button></div>
+</div></div></div>
+
+<!-- Category Modal -->
+<div class="modal fade" id="dlgCategory" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title">Category</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <input type="hidden" id="catId">
+    <div class="mb-2"><label class="form-label">CatCode</label><input id="catCode" class="form-control" placeholder="e.g. ABC"></div>
+    <div class="mb-2"><label class="form-label">CatName</label><input id="catName" class="form-control"></div>
+    <div class="mb-2"><label class="form-label">CatDesc</label><input id="catDesc" class="form-control"></div>
+    <div class="mb-2"><label class="form-label">SubCat</label><input id="subCat" class="form-control"></div>
+  </div>
+  <div class="modal-footer"><button id="catSave" class="btn btn-primary">Save</button></div>
+</div></div></div>
+
+<!-- Mapping Modal -->
+<div class="modal fade" id="dlgMap" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title">Add Mapping</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <div class="mb-2"><label class="form-label">Customer</label><select id="mCustSel" class="form-select"></select></div>
+    <div class="mb-2"><label class="form-label">Customer SKU Code</label><input id="mCustSku" class="form-control"></div>
+    <div class="mb-2"><label class="form-label">SKU</label><select id="mSkuSel" class="form-select"></select></div>
+  </div>
+  <div class="modal-footer"><button id="mSave" class="btn btn-primary">Save</button></div>
+</div></div></div>
+
+<!-- Paste Modal -->
+<div class="modal fade" id="dlgPaste" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title">Paste rows (CustSKUCode, ArticleCode)</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <textarea id="pasteArea" class="form-control" rows="8" placeholder="C123, X001&#10;C124, X002"></textarea>
+  </div>
+  <div class="modal-footer"><button id="pasteSave" class="btn btn-primary">Import</button></div>
+</div></div></div>
+{% endblock %}
+
+{% block scripts %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css"/>
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<!-- <script>
+(() => {
+  const EP = {
+    customers: '/masters/api/customers',
+    skus:      '/masters/api/skus',
+    maps:      '/masters/api/mappings',
+    paste:     '/masters/api/mappings/paste',
+    cats:      '/masters/api/categories',
+    optCust:   '/masters/api/options/customers',
+    optSku:    '/masters/api/options/skus',
+    optCat:    '/masters/api/options/categories'
+  };
+
+
+  // ---------- Select2 loaders ----------
+  function sel2Cust($el){ $el.select2({ ajax:{ url:EP.optCust, data: p=>({term:p.term}), processResults: d=>d }, width:'100%' }); }
+  function sel2Sku($el, extra={}){ $el.select2({ ajax:{ url:EP.optSku, data:p=>({term:p.term, ...extra}), processResults:d=>d }, width:'100%' }); }
+  function sel2Cat($el){ $el.select2({ ajax:{ url:EP.optCat, data:p=>({term:p.term}) , processResults:d=>d }, width:'100%', placeholder: $el.data('placeholder') || '' }); }
+
+  // ==========================================================
+  // Customers tab
+  // ==========================================================
+  const $cBody = $('#cBody'), $cQ = $('#cQ'), cDlg = new bootstrap.Modal('#dlgCustomer');
+  function loadCustomers(){
+    $cBody.html('<tr><td colspan="5">Loading…</td></tr>');
+    const params = new URLSearchParams({ q: $cQ.val()||'', page:1, page_size:50 });
+    fetch(EP.customers + '?' + params).then(r=>r.json()).then(j=>{
+      const rows = (j.items||[]).map(r=>`
+        <tr data-id="${r.CustomerID}">
+          <td>${r.CustCode}</td>
+          <td>${r.CustName}</td>
+          <td>${r.LevelType}</td>
+          <td>${r.ParentCustID||'-'}</td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-primary c-edit">Edit</button>
+            <button class="btn btn-sm btn-outline-danger c-del">Del</button>
+          </td>
+        </tr>`).join('') || '<tr><td colspan="5" class="text-muted">No results.</td></tr>';
+      $cBody.html(rows);
+    });
+  }
+
+
+  $('#cAdd').on('click', ()=>{ $('#cId').val(''); $('#cCode,#cName').val(''); $('#cLevel').val('HO'); $('#cParent').empty(); sel2Cust($('#cParent')); cDlg.show(); });
+  $cBody.on('click','.c-edit', function(){
+    const tr=$(this).closest('tr'); $('#cId').val(tr.data('id'));
+    $('#cCode').val(tr.children().eq(0).text());
+    $('#cName').val(tr.children().eq(1).text());
+    $('#cLevel').val(tr.children().eq(2).text());
+    $('#cParent').empty(); sel2Cust($('#cParent'));
+    cDlg.show();
+  });
+  $cBody.on('click','.c-del', function(){
+    const id=$(this).closest('tr').data('id');
+    if(!confirm('Delete this customer?')) return;
+    fetch(`${EP.customers}/${id}`, {method:'DELETE'}).then(()=>loadCustomers());
+  });
+  $('#cSave').on('click', ()=>{
+    const payload = {
+      CustCode: $('#cCode').val(), CustName: $('#cName').val(),
+      LevelType: $('#cLevel').val(), ParentCustID: $('#cParent').val()||null
+    };
+    const id = $('#cId').val();
+    const req = id ? fetch(`${EP.customers}/${id}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
+                   : fetch(EP.customers, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    req.then(()=>{ cDlg.hide(); loadCustomers(); });
+  });
+
+  // ==========================================================
+  // SKUs tab
+  // ==========================================================
+  const $sBody=$('#sBody'), $sQ=$('#sQ'), $sBrand=$('#sBrand'),
+        sDlg = new bootstrap.Modal('#dlgSku'); sel2Cat($('#sCatSel')); sel2Cat($('#sCatSelect'));
+
+  function loadSkus(){
+    $sBody.html('<tr><td colspan="5">Loading…</td></tr>');
+    const params = new URLSearchParams({
+      q: $sQ.val()||'',
+      brand: $sBrand.val()||'',
+      category_id: $('#sCatSel').val() || '',
+      page: 1, page_size: 50
+    });
+    fetch(EP.skus + '?' + params).then(r=>r.json()).then(j=>{
+      const rows=(j.items||[]).map(r=>{
+        const cat = r.Category;
+        const catLabel = cat ? `${cat.CatCode} — ${cat.CatName||''}` : '';
+        const tip = cat ? `title="Desc: ${cat.CatDesc||''} | Sub: ${cat.SubCat||''}"` : '';
+        return `
+        <tr data-id="${r.SKU_ID}">
+          <td>${r.ArticleCode}</td><td>${r.Description||''}</td>
+          <td>${r.Brand||''}</td><td ${tip}>${catLabel}</td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-primary s-edit">Edit</button>
+            <button class="btn btn-sm btn-outline-danger s-del">Del</button>
+          </td>
+        </tr>`;
+      }).join('') || '<tr><td colspan="5" class="text-muted">No results.</td></tr>';
+      $sBody.html(rows);
+    });
+  }
+  $('#sRefresh').on('click', loadSkus);
+  $('#sClear').on('click', ()=>{ $sQ.val(''); $sBrand.val(''); $('#sCatSel').val(null).trigger('change'); loadSkus(); });
+
+  $('#sAdd').on('click', ()=>{
+    $('#sId').val(''); $('#sArticle,#sDesc,#sBrandEdit').val(''); $('#sCatSelect').val(null).trigger('change'); $('#sCatInfo').text('');
+    sDlg.show();
+  });
+
+  $sBody.on('click','.s-edit', function(){
+    const tr=$(this).closest('tr'), t=tr.children();
+    $('#sId').val(tr.data('id')); $('#sArticle').val(t.eq(0).text()); $('#sDesc').val(t.eq(1).text());
+    $('#sBrandEdit').val(t.eq(2).text());
+    // Pre-fill category filter label into the modal select (best-effort)
+    $('#sCatSelect').val(null).trigger('change');
+    sDlg.show();
+  });
+
+  $sBody.on('click','.s-del', function(){
+    const id=$(this).closest('tr').data('id');
+    if(!confirm('Delete this SKU?')) return;
+    fetch(`${EP.skus}/${id}`, {method:'DELETE'}).then(()=>loadSkus());
+  });
+
+  // Update helper text with category details on selection
+  $('#sCatSelect').on('select2:select', function(e){
+    const text = e.params.data.text || '';
+    $('#sCatInfo').text(text);
+  }).on('select2:clear', ()=>$('#sCatInfo').text(''));
+
+  $('#sSave').on('click', ()=>{
+    const payload = {
+      ArticleCode: $('#sArticle').val(),
+      Description: $('#sDesc').val(),
+      Brand: $('#sBrandEdit').val(),
+      CategoryMappingID: $('#sCatSelect').val() || null
+    };
+    const id=$('#sId').val();
+    const req=id? fetch(`${EP.skus}/${id}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
+                : fetch(EP.skus, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    req.then(()=>{ sDlg.hide(); loadSkus(); });
+  });
+
+  // ==========================================================
+  // Categories tab
+  // ==========================================================
+  const $catBody = $('#catBody'), $catQ = $('#catQ'), catDlg = new bootstrap.Modal('#dlgCategory');
+
+  function loadCategories(){
+    $catBody.html('<tr><td colspan="6">Loading…</td></tr>');
+    const params = new URLSearchParams({ q: $catQ.val()||'', page:1, page_size:100 });
+    fetch(EP.cats + '?' + params).then(r=>r.json()).then(j=>{
+      const rows = (j.items||[]).map(r=>`
+        <tr data-id="${r.ID}">
+          <td>${r.CatCode||''}</td>
+          <td>${r.CatName||''}</td>
+          <td>${r.CatDesc||''}</td>
+          <td>${r.SubCat||''}</td>
+          <td class="text-center">${r.SKUCount ?? 0}</td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-primary cat-edit">Edit</button>
+            <button class="btn btn-sm btn-outline-danger cat-del">Del</button>
+          </td>
+        </tr>`).join('') || '<tr><td colspan="6" class="text-muted">No results.</td></tr>';
+      $catBody.html(rows);
+    });
+  }
+
+  $('#catAdd').on('click', ()=>{
+    $('#catId').val(''); $('#catCode,#catName,#catDesc,#subCat').val('');
+    catDlg.show();
+  });
+
+  $catBody.on('click','.cat-edit', function(){
+    const tr=$(this).closest('tr'), t=tr.children();
+    $('#catId').val(tr.data('id'));
+    $('#catCode').val(t.eq(0).text());
+    $('#catName').val(t.eq(1).text());
+    $('#catDesc').val(t.eq(2).text());
+    $('#subCat').val(t.eq(3).text());
+    catDlg.show();
+  });
+
+  $catBody.on('click','.cat-del', function(){
+    const id=$(this).closest('tr').data('id');
+    if(!confirm('Delete this Category? If referenced by SKUs, you will be asked to confirm a forced delete.')) return;
+    // Try safe delete first
+    fetch(`${EP.cats}/${id}`, {method:'DELETE'}).then(async r=>{
+      if(r.ok){ loadCategories(); return; }
+      const j = await r.json().catch(()=>({}));
+      if(j && j.error && j.error.includes('in use')){
+        if(confirm(j.error + '\n\nProceed and detach from SKUs?')){
+          fetch(`${EP.cats}/${id}?force=1`, {method:'DELETE'}).then(()=>loadCategories());
+        }
+      }
+    });
+  });
+
+  $('#catSave').on('click', ()=>{
+    const payload = {
+      CatCode: $('#catCode').val(),
+      CatName: $('#catName').val(),
+      CatDesc: $('#catDesc').val(),
+      SubCat:  $('#subCat').val()
+    };
+    const id = $('#catId').val();
+    const req = id ? fetch(`${EP.cats}/${id}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
+                   : fetch(EP.cats, {method:'POST',  headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    req.then(async r=>{
+      if(!r.ok){
+        const j = await r.json().catch(()=>({}));
+        alert(j.error || 'Save failed');
+        return;
+      }
+      catDlg.hide(); loadCategories(); // also refresh SKU filter selects
+      $('#sCatSel').val(null).trigger('change');
+      $('#sCatSelect').val(null).trigger('change');
+    });
+  });
+
+  // ==========================================================
+  // Mapping tab
+  // ==========================================================
+  const $mBody=$('#mBody'); const mDlg=new bootstrap.Modal('#dlgMap'); const pDlg=new bootstrap.Modal('#dlgPaste');
+  sel2Cust($('#mCustomer'));
+  $('#mCustomer').on('change', loadMappings);
+
+  function loadMappings(){
+    const cust = $('#mCustomer').val();
+    if(!cust){ $mBody.html('<tr><td colspan="6">Select a customer</td></tr>'); return; }
+    $mBody.html('<tr><td colspan="6">Loading…</td></tr>');
+    const params = new URLSearchParams({ customer_id:cust, page:1, page_size:100 });
+    fetch(EP.maps + '?' + params).then(r=>r.json()).then(j=>{
+      const rows=(j.items||[]).map(r=>{
+        const cat = r.Category;
+        const catLabel = cat ? `${cat.CatCode} — ${cat.CatName||''}` : '';
+        const tip = cat ? `title="Desc: ${cat.CatDesc||''} | Sub: ${cat.SubCat||''}"` : '';
+        return `
+        <tr data-id="${r.MapID}">
+          <td>${r.CustSKUCode}</td><td>${r.ArticleCode}</td><td>${r.SKU_Desc||''}</td>
+          <td>${r.Brand||''}</td><td ${tip}>${catLabel}</td>
+          <td class="text-end"><button class="btn btn-sm btn-outline-danger m-del">Del</button></td>
+        </tr>`;
+      }).join('') || '<tr><td colspan="6" class="text-muted">No mappings.</td></tr>';
+      $mBody.html(rows);
+    });
+  }
+
+  $('#mAdd').on('click', ()=>{
+    $('#mCustSel').empty(); $('#mSkuSel').empty(); $('#mCustSku').val('');
+    sel2Cust($('#mCustSel')); sel2Sku($('#mSkuSel'));
+    const cur = $('#mCustomer').val(); if(cur){ $('#mCustSel').append(new Option('', '', false, false)); $('#mCustSel').val(cur).trigger('change'); }
+    mDlg.show();
+  });
+
+  $('#mSave').on('click', ()=>{
+    const payload = { CustomerID: $('#mCustSel').val(), SKU_ID: $('#mSkuSel').val(), CustSKUCode: $('#mCustSku').val() };
+    fetch(EP.maps, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
+      .then(r=>r.json()).then(()=>{ mDlg.hide(); loadMappings(); });
+  });
+
+  $mBody.on('click','.m-del', function(){
+    const id=$(this).closest('tr').data('id');
+    if(!confirm('Delete mapping?')) return;
+    fetch(`${EP.maps}/${id}`, {method:'DELETE'}).then(()=>loadMappings());
+  });
+
+  // Paste flow
+  $('#mPaste').on('click', ()=>{ $('#pasteArea').val(''); pDlg.show(); });
+  $('#pasteSave').on('click', ()=>{
+    const cust = $('#mCustomer').val(); if(!cust){ alert('Pick a customer first.'); return; }
+    const lines = $('#pasteArea').val().split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+    const rows = lines.map(l=>{
+      const parts = l.split(','); return { CustSKUCode: (parts[0]||'').trim(), ArticleCode: (parts[1]||'').trim() }
+    }).filter(r=>r.CustSKUCode && r.ArticleCode);
+    fetch(EP.paste, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ CustomerID: cust, rows })})
+      .then(r=>r.json()).then(()=>{ pDlg.hide(); loadMappings(); });
+  });
+
+  // init
+  loadCustomers(); loadSkus(); loadCategories();
+})();
+</script> -->
+
+
+<script>
+(() => {
+  const EP = {
+    customers: '/masters/api/customers',
+    skus:      '/masters/api/skus',
+    maps:      '/masters/api/mappings',
+    paste:     '/masters/api/mappings/paste',
+    cats:      '/masters/api/categories',
+    optCust:   '/masters/api/options/customers',
+    optSku:    '/masters/api/options/skus',
+    optCat:    '/masters/api/options/categories',
+    // NEW: bulk Excel endpoints
+    tpl:       (m)=>`/masters/api/bulk/template/${m}`,
+    upload:    (m)=>`/masters/api/bulk/upload/${m}`,
+  };
+
+  // ---------- Select2 loaders ----------
+  function sel2Cust($el){ $el.select2({ ajax:{ url:EP.optCust, data: p=>({term:p.term}), processResults: d=>d }, width:'100%' }); }
+  function sel2Sku($el, extra={}){ $el.select2({ ajax:{ url:EP.optSku, data:p=>({term:p.term, ...extra}), processResults:d=>d }, width:'100%' }); }
+  function sel2Cat($el){ $el.select2({ ajax:{ url:EP.optCat, data:p=>({term:p.term}) , processResults:d=>d }, width:'100%', placeholder: $el.data('placeholder') || '' }); }
+
+  // ---------- Generic pager renderer ----------
+  function renderPager($wrap, state, onChange){
+    const totalPages = Math.max(1, Math.ceil((state.total||0) / state.pageSize));
+    const p = Math.min(Math.max(1, state.page), totalPages);
+    const btn = (id, label, disabled=false)=>`<button type="button" class="btn btn-sm btn-outline-secondary pager-btn" data-act="${id}" ${disabled?'disabled':''}>${label}</button>`;
+    $wrap.html([
+      btn('first','« First', p<=1),
+      btn('prev','‹ Prev',  p<=1),
+      `<span class="px-2 small align-self-center">Page ${p} / ${totalPages}</span>`,
+      btn('next','Next ›',  p>=totalPages),
+      btn('last','Last »',  p>=totalPages),
+    ].join(' '));
+
+    $wrap.off('click','.pager-btn').on('click','.pager-btn', e=>{
+      const act = e.currentTarget.dataset.act;
+      if(act==='first') state.page = 1;
+      else if(act==='prev') state.page = Math.max(1, p-1);
+      else if(act==='next') state.page = Math.min(totalPages, p+1);
+      else if(act==='last') state.page = totalPages;
+      onChange();
+    });
+  }
+
+  // ---------- Excel helpers (template + upload) ----------
+  function triggerDownload(url){
+    const a = document.createElement('a');
+    a.href = url; document.body.appendChild(a); a.click(); a.remove();
+  }
+
+  $(document).on('click', '.dl-tpl', function(){
+    const master = $(this).data('master');
+    triggerDownload(EP.tpl(master));
+  });
+
+  $(document).on('click', '.up-excel', function(){
+    const $wrap = $(this).closest('div');
+    const master = $(this).data('master');
+    const $file = $wrap.find('.up-file').first();
+    $file.data('master', master).val('').trigger('click');
+  });
+
+  $(document).on('change', '.up-file', function(){
+    const master = $(this).data('master');
+    const f = this.files[0]; if(!f) return;
+    const fd = new FormData(); fd.append('file', f);
+    fetch(EP.upload(master), { method:'POST', body: fd })
+      .then(r=>r.json()).then(j=>{
+        const res = j.result || j;
+        if(!res || res.ok===false){
+          alert(res?.error || 'Upload failed'); return;
+        }
+        const msg = `${master}: created=${res.created||0}, updated=${res.updated||0}, skipped=${res.skipped||0}`;
+        if(res.errors?.length){ console.table(res.errors); alert(msg+`\nErrors: ${res.errors.length} (see console)`); }
+        else { alert(msg); }
+        // refresh
+        if(master==='customers') loadCustomers();
+        if(master==='skus')      loadSkus();
+        if(master==='categories')loadCategories();
+        if(master==='mappings')  loadMappings();
+      }).catch(e=>alert('Upload error: '+e));
+  });
+
+  // ==========================================================
+  // State (for pagination)
+  // ==========================================================
+  const cState = { page:1, pageSize:50, total:0 };
+  const sState = { page:1, pageSize:50, total:0 };
+  const catState = { page:1, pageSize:50, total:0 };
+  const mState = { page:1, pageSize:100, total:0, customerId:null };
+
+  // ==========================================================
+  // Customers tab
+  // ==========================================================
+  const $cBody = $('#cBody'), $cQ = $('#cQ'), cDlg = new bootstrap.Modal('#dlgCustomer');
+  function loadCustomers(){
+    $cBody.html('<tr><td colspan="5">Loading…</td></tr>');
+    const params = new URLSearchParams({ q: $cQ.val()||'', page:cState.page, page_size:cState.pageSize });
+    fetch(EP.customers + '?' + params).then(r=>r.json()).then(j=>{
+      cState.total = j.total || 0;
+      const rows = (j.items||[]).map(r=>`
+        <tr data-id="${r.CustomerID}">
+          <td>${r.CustCode}</td>
+          <td>${r.CustName}</td>
+          <td>${r.LevelType}</td>
+          <td>${r.ParentCustID||'-'}</td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-primary c-edit">Edit</button>
+            <button class="btn btn-sm btn-outline-danger c-del">Del</button>
+          </td>
+        </tr>`).join('') || '<tr><td colspan="5" class="text-muted">No results.</td></tr>';
+      $cBody.html(rows);
+      $('#cPageInfo').text(`Showing page ${cState.page} of ${Math.max(1, Math.ceil(cState.total/cState.pageSize))} — ${cState.total} total`);
+      renderPager($('#cPager'), cState, loadCustomers);
+    });
+  }
+
+  $('#cAdd').on('click', ()=>{ $('#cId').val(''); $('#cCode,#cName').val(''); $('#cLevel').val('HO'); $('#cParent').empty(); sel2Cust($('#cParent')); cDlg.show(); });
+  $cBody.on('click','.c-edit', function(){
+    const tr=$(this).closest('tr'); $('#cId').val(tr.data('id'));
+    $('#cCode').val(tr.children().eq(0).text());
+    $('#cName').val(tr.children().eq(1).text());
+    $('#cLevel').val(tr.children().eq(2).text());
+    $('#cParent').empty(); sel2Cust($('#cParent'));
+    cDlg.show();
+  });
+  $cBody.on('click','.c-del', function(){
+    const id=$(this).closest('tr').data('id');
+    if(!confirm('Delete this customer?')) return;
+    fetch(`${EP.customers}/${id}`, {method:'DELETE'}).then(()=>loadCustomers());
+  });
+  $('#cSave').on('click', ()=>{
+    const payload = {
+      CustCode: $('#cCode').val(), CustName: $('#cName').val(),
+      LevelType: $('#cLevel').val(), ParentCustID: $('#cParent').val()||null
+    };
+    const id = $('#cId').val();
+    const req = id ? fetch(`${EP.customers}/${id}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
+                   : fetch(EP.customers, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    req.then(()=>{ cDlg.hide(); loadCustomers(); });
+  });
+  $cQ.on('keyup', (e)=>{ if(e.key==='Enter'){ cState.page=1; loadCustomers(); } });
+
+  // ==========================================================
+  // SKUs tab
+  // ==========================================================
+  const $sBody=$('#sBody'), $sQ=$('#sQ'), $sBrand=$('#sBrand'),
+        sDlg = new bootstrap.Modal('#dlgSku'); sel2Cat($('#sCatSel')); sel2Cat($('#sCatSelect'));
+
+  function loadSkus(){
+    $sBody.html('<tr><td colspan="5">Loading…</td></tr>');
+    const params = new URLSearchParams({
+      q: $sQ.val()||'',
+      brand: $sBrand.val()||'',
+      category_id: $('#sCatSel').val() || '',
+      page: sState.page, page_size: sState.pageSize
+    });
+    fetch(EP.skus + '?' + params).then(r=>r.json()).then(j=>{
+      sState.total = j.total || 0;
+      const rows=(j.items||[]).map(r=>{
+        const cat = r.Category;
+        const catLabel = cat ? `${cat.CatCode} — ${cat.CatName||''}` : '';
+        const tip = cat ? `title="Desc: ${cat.CatDesc||''} | Sub: ${cat.SubCat||''}"` : '';
+        return `
+        <tr data-id="${r.SKU_ID}">
+          <td>${r.ArticleCode}</td><td>${r.Description||''}</td>
+          <td>${r.Brand||''}</td><td ${tip}>${catLabel}</td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-primary s-edit">Edit</button>
+            <button class="btn btn-sm btn-outline-danger s-del">Del</button>
+          </td>
+        </tr>`;
+      }).join('') || '<tr><td colspan="5" class="text-muted">No results.</td></tr>';
+      $sBody.html(rows);
+      $('#sPageInfo').text(`Showing page ${sState.page} of ${Math.max(1, Math.ceil(sState.total/sState.pageSize))} — ${sState.total} total`);
+      renderPager($('#sPager'), sState, loadSkus);
+    });
+  }
+  $('#sRefresh').on('click', ()=>{ sState.page=1; loadSkus(); });
+  $('#sClear').on('click', ()=>{ $sQ.val(''); $sBrand.val(''); $('#sCatSel').val(null).trigger('change'); sState.page=1; loadSkus(); });
+
+  $('#sAdd').on('click', ()=>{
+    $('#sId').val(''); $('#sArticle,#sDesc,#sBrandEdit').val(''); $('#sCatSelect').val(null).trigger('change'); $('#sCatInfo').text('');
+    sDlg.show();
+  });
+
+  $sBody.on('click','.s-edit', function(){
+    const tr=$(this).closest('tr'), t=tr.children();
+    $('#sId').val(tr.data('id')); $('#sArticle').val(t.eq(0).text()); $('#sDesc').val(t.eq(1).text());
+    $('#sBrandEdit').val(t.eq(2).text());
+    $('#sCatSelect').val(null).trigger('change');
+    sDlg.show();
+  });
+  $sBody.on('click','.s-del', function(){
+    const id=$(this).closest('tr').data('id');
+    if(!confirm('Delete this SKU?')) return;
+    fetch(`${EP.skus}/${id}`, {method:'DELETE'}).then(()=>loadSkus());
+  });
+  $('#sCatSelect').on('select2:select', e=>{
+    $('#sCatInfo').text(e.params.data.text || '');
+  }).on('select2:clear', ()=>$('#sCatInfo').text(''));
+  $('#sSave').on('click', ()=>{
+    const payload = {
+      ArticleCode: $('#sArticle').val(),
+      Description: $('#sDesc').val(),
+      Brand: $('#sBrandEdit').val(),
+      CategoryMappingID: $('#sCatSelect').val() || null
+    };
+    const id=$('#sId').val();
+    const req=id? fetch(`${EP.skus}/${id}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
+                : fetch(EP.skus, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    req.then(()=>{ sDlg.hide(); loadSkus(); });
+  });
+  $sQ.on('keyup', (e)=>{ if(e.key==='Enter'){ sState.page=1; loadSkus(); } });
+  $sBrand.on('keyup', (e)=>{ if(e.key==='Enter'){ sState.page=1; loadSkus(); } });
+  $('#sCatSel').on('change', ()=>{ sState.page=1; loadSkus(); });
+
+  // ==========================================================
+  // Categories tab
+  // ==========================================================
+  const $catBody = $('#catBody'), $catQ = $('#catQ'), catDlg = new bootstrap.Modal('#dlgCategory');
+
+  function loadCategories(){
+    $catBody.html('<tr><td colspan="6">Loading…</td></tr>');
+    const params = new URLSearchParams({ q: $catQ.val()||'', page:catState.page, page_size:catState.pageSize });
+    fetch(EP.cats + '?' + params).then(r=>r.json()).then(j=>{
+      catState.total = j.total || 0;
+      const rows = (j.items||[]).map(r=>`
+        <tr data-id="${r.ID}">
+          <td>${r.CatCode||''}</td>
+          <td>${r.CatName||''}</td>
+          <td>${r.CatDesc||''}</td>
+          <td>${r.SubCat||''}</td>
+          <td class="text-center">${r.SKUCount ?? 0}</td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-primary cat-edit">Edit</button>
+            <button class="btn btn-sm btn-outline-danger cat-del">Del</button>
+          </td>
+        </tr>`).join('') || '<tr><td colspan="6" class="text-muted">No results.</td></tr>';
+      $catBody.html(rows);
+      $('#catPageInfo').text(`Showing page ${catState.page} of ${Math.max(1, Math.ceil(catState.total/catState.pageSize))} — ${catState.total} total`);
+      renderPager($('#catPager'), catState, loadCategories);
+    });
+  }
+
+  $('#catAdd').on('click', ()=>{ $('#catId').val(''); $('#catCode,#catName,#catDesc,#subCat').val(''); catDlg.show(); });
+  $catBody.on('click','.cat-edit', function(){
+    const tr=$(this).closest('tr'), t=tr.children();
+    $('#catId').val(tr.data('id'));
+    $('#catCode').val(t.eq(0).text());
+    $('#catName').val(t.eq(1).text());
+    $('#catDesc').val(t.eq(2).text());
+    $('#subCat').val(t.eq(3).text());
+    catDlg.show();
+  });
+  $catBody.on('click','.cat-del', function(){
+    const id=$(this).closest('tr').data('id');
+    if(!confirm('Delete this Category? If referenced by SKUs, you will be asked to confirm a forced delete.')) return;
+    fetch(`${EP.cats}/${id}`, {method:'DELETE'}).then(async r=>{
+      if(r.ok){ loadCategories(); return; }
+      const j = await r.json().catch(()=>({}));
+      if(j && j.error && j.error.includes('in use')){
+        if(confirm(j.error + '\n\nProceed and detach from SKUs?')){
+          fetch(`${EP.cats}/${id}?force=1`, {method:'DELETE'}).then(()=>loadCategories());
+        }
+      }
+    });
+  });
+  $('#catSave').on('click', ()=>{
+    const payload = {
+      CatCode: $('#catCode').val(),
+      CatName: $('#catName').val(),
+      CatDesc: $('#catDesc').val(),
+      SubCat:  $('#subCat').val()
+    };
+    const id = $('#catId').val();
+    const req = id ? fetch(`${EP.cats}/${id}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
+                   : fetch(EP.cats, {method:'POST',  headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    req.then(async r=>{
+      if(!r.ok){
+        const j = await r.json().catch(()=>({}));
+        alert(j.error || 'Save failed'); return;
+      }
+      catDlg.hide(); loadCategories();
+      $('#sCatSel').val(null).trigger('change');
+      $('#sCatSelect').val(null).trigger('change');
+    });
+  });
+  $catQ.on('keyup', (e)=>{ if(e.key==='Enter'){ catState.page=1; loadCategories(); } });
+
+  // ==========================================================
+  // Mapping tab
+  // ==========================================================
+  const $mBody=$('#mBody'); const mDlg=new bootstrap.Modal('#dlgMap'); const pDlg=new bootstrap.Modal('#dlgPaste');
+  sel2Cust($('#mCustomer'));
+  $('#mCustomer').on('change', ()=>{ mState.page=1; mState.customerId=$('#mCustomer').val(); loadMappings(); });
+
+  function loadMappings(){
+    const cust = $('#mCustomer').val();
+    if(!cust){ $mBody.html('<tr><td colspan="6">Select a customer</td></tr>'); $('#mPageInfo').text(''); $('#mPager').empty(); return; }
+    $mBody.html('<tr><td colspan="6">Loading…</td></tr>');
+    const params = new URLSearchParams({ customer_id:cust, page:mState.page, page_size:mState.pageSize });
+    fetch(EP.maps + '?' + params).then(r=>r.json()).then(j=>{
+      mState.total = j.total || 0;
+      const rows=(j.items||[]).map(r=>{
+        const cat = r.Category;
+        const catLabel = cat ? `${cat.CatCode} — ${cat.CatName||''}` : '';
+        const tip = cat ? `title="Desc: ${cat.CatDesc||''} | Sub: ${cat.SubCat||''}"` : '';
+        return `
+        <tr data-id="${r.MapID}">
+          <td>${r.CustSKUCode}</td><td>${r.ArticleCode}</td><td>${r.SKU_Desc||''}</td>
+          <td>${r.Brand||''}</td><td ${tip}>${catLabel}</td>
+          <td class="text-end"><button class="btn btn-sm btn-outline-danger m-del">Del</button></td>
+        </tr>`;
+      }).join('') || '<tr><td colspan="6" class="text-muted">No mappings.</td></tr>';
+      $mBody.html(rows);
+      $('#mPageInfo').text(`Showing page ${mState.page} of ${Math.max(1, Math.ceil(mState.total/mState.pageSize))} — ${mState.total} total`);
+      renderPager($('#mPager'), mState, loadMappings);
+    });
+  }
+
+  $('#mAdd').on('click', ()=>{
+    $('#mCustSel').empty(); $('#mSkuSel').empty(); $('#mCustSku').val('');
+    sel2Cust($('#mCustSel')); sel2Sku($('#mSkuSel'));
+    const cur = $('#mCustomer').val(); if(cur){ $('#mCustSel').append(new Option('', '', false, false)); $('#mCustSel').val(cur).trigger('change'); }
+    mDlg.show();
+  });
+
+  $('#mSave').on('click', ()=>{
+    const payload = { CustomerID: $('#mCustSel').val(), SKU_ID: $('#mSkuSel').val(), CustSKUCode: $('#mCustSku').val() };
+    fetch(EP.maps, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
+      .then(r=>r.json()).then(()=>{ mDlg.hide(); loadMappings(); });
+  });
+
+  $mBody.on('click','.m-del', function(){
+    const id=$(this).closest('tr').data('id');
+    if(!confirm('Delete mapping?')) return;
+    fetch(`${EP.maps}/${id}`, {method:'DELETE'}).then(()=>loadMappings());
+  });
+
+  // Paste flow
+  $('#mPaste').on('click', ()=>{ $('#pasteArea').val(''); pDlg.show(); });
+  $('#pasteSave').on('click', ()=>{
+    const cust = $('#mCustomer').val(); if(!cust){ alert('Pick a customer first.'); return; }
+    const lines = $('#pasteArea').val().split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+    const rows = lines.map(l=>{
+      const parts = l.split(','); return { CustSKUCode: (parts[0]||'').trim(), ArticleCode: (parts[1]||'').trim() }
+    }).filter(r=>r.CustSKUCode && r.ArticleCode);
+    fetch(EP.paste, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ CustomerID: cust, rows })})
+      .then(r=>r.json()).then(()=>{ pDlg.hide(); loadMappings(); });
+  });
+
+  // init
+  sel2Cat($('#sCatSel')); sel2Cat($('#sCatSelect'));
+  loadCustomers(); loadSkus(); loadCategories();
+})();
+</script>
+
+
+{% endblock %}
+ 

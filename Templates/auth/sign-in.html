@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sales Pulse - Login</title>
+</head>
+
+<style>
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  html, body {
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background-color: #f5f5f0;
+  }
+
+  body {
+    overflow-y: auto; 
+  }
+
+  .container {
+    display: flex;
+    min-height: 100vh; 
+    /* max-width: 1200px; */
+    /* margin: 30px; */
+    background-color: #f5f5f0;
+  }
+
+  .left-panel {
+    flex: 1;
+    background:  url("{{ url_for('static', filename='img/login-background.jpeg') }}") no-repeat center center;
+    background-size: cover; 
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 60px 240px 40px;
+    color: white;
+  }
+
+  .left-panel::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4); 
+    z-index: 0;
+  }
+
+  .content,
+  .footer {
+    position: relative;
+    z-index: 1;
+  }
+
+  .logo {
+    margin-bottom: 40px;
+  }
+
+  .left-panel h1 {
+    font-size: 48px;
+    font-weight: 700;
+    margin-bottom: 24px;
+    line-height: 1.1;
+  }
+
+  .left-panel p {
+    font-size: 18px;
+    line-height: 1.6;
+    opacity: 0.9;
+    max-width: 400px;
+  }
+
+  .footer p {
+    font-size: 14px;
+    opacity: 0.7;
+  }
+
+  /* RIGHT PANEL */
+  .right-panel {
+    flex: 1;
+    background: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+  }
+
+  .login-form {
+    width: 100%;
+    max-width: 400px;
+  }
+
+  .brand h2 {
+    font-size: 32px;
+    font-weight: 700;
+    color: #1f2937;
+    margin-bottom: 40px;
+  }
+
+  .welcome h3 {
+    font-size: 24px;
+    font-weight: 600;
+    color: #1f2937;
+    margin-bottom: 12px;
+  }
+
+  .welcome p {
+    font-size: 14px;
+    color: #6b7280;
+    margin-bottom: 32px;
+    line-height: 1.5;
+  }
+
+  .create-account {
+    color: #4f46e5;
+    text-decoration: underline;
+    font-weight: 500;
+  }
+
+  .create-account:hover {
+    color: #3730a3;
+  }
+
+  .input-group {
+    margin-bottom: 20px;
+  }
+
+  .input-group input {
+    width: 100%;
+    padding: 16px;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: 16px;
+    transition: border-color 0.2s ease;
+    background-color: #f9fafb;
+  }
+
+  .input-group input:focus {
+    outline: none;
+    border-color: #4f46e5;
+    background-color: white;
+  }
+
+  .input-group input::placeholder {
+    color: #9ca3af;
+  }
+
+  .login-btn {
+    width: 100%;
+    background-color: #1f2937;
+    color: white;
+    border: none;
+    padding: 16px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    margin-bottom: 24px;
+  }
+
+  .login-btn:hover {
+    background-color: #111827;
+  }
+
+  /* Divider */
+  .divider {
+    text-align: center;
+    margin: 24px 0;
+    position: relative;
+  }
+
+  .divider::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background-color: #e5e7eb;
+  }
+
+  .divider span {
+    background-color: white;
+    padding: 0 16px;
+    color: #6b7280;
+    font-size: 14px;
+  }
+
+  /* Google Button */
+  .google-btn {
+    width: 100%;
+    background-color: white;
+    color: #374151;
+    border: 2px solid #e5e7eb;
+    padding: 16px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .google-btn:hover {
+    background-color: #f9fafb;
+    border-color: #d1d5db;
+  }
+
+  .forgot-password {
+    text-align: center;
+    font-size: 14px;
+  }
+
+  .forgot-link {
+    color: #6b7280;
+    text-decoration: none;
+    margin-right: 8px;
+  }
+
+  .click-here {
+    color: #4f46e5;
+    text-decoration: underline;
+    font-weight: 500;
+  }
+
+  .click-here:hover {
+    color: #3730a3;
+  }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .container {
+      flex-direction: column;
+    }
+
+    .left-panel {
+      height: 300px;
+      padding: 40px 30px;
+    }
+
+    .left-panel h1 {
+      font-size: 36px;
+    }
+
+    .left-panel p {
+      font-size: 16px;
+    }
+  }
+
+  .logo img {
+    width: 200px;      
+    height: auto;
+    object-fit: contain;
+  }
+
+
+</style>
+
+<body>
+  <div class="container">
+    <!-- LEFT PANEL -->
+    <div class="left-panel">
+      <div class="overlay"></div>
+      <div class="content">
+        <div class="logo">
+          <img src="{{ url_for('static', filename='img/salespulse-logo.png') }}" alt="SalesPulse Logo">
+        </div>
+
+        <p>
+          Skip repetitive and manual sales-marketing tasks.<br />
+          Get highly productive through automation and save tons of time!
+        </p>
+      </div>
+      <div class="footer">
+        <p>&copy; 2025 Sales Pulse. All rights reserved.</p>
+      </div>
+    </div>
+
+    <!-- RIGHT PANEL -->
+    <div class="right-panel">
+      <div class="login-form">
+        <div class="brand">
+          <h2>Sales Pulse</h2>
+        </div>
+
+        <div class="welcome">
+          <h3>Welcome Back!</h3>
+          <p>
+            Don’t have an account?
+            <a href="#" class="create-account">Create a new account now</a> — it’s FREE and takes less than a minute.
+          </p>
+        </div>
+
+        <form id="loginForm" action="{{ url_for('auth.login') }}" method="POST">
+          <div class="input-group">
+            <input type="text" id="email" name="username" placeholder="Username" required />
+          </div>
+
+          <div class="input-group">
+            <input type="password" id="password" name="password" placeholder="Password" required />
+          </div>
+
+          <button type="submit" class="login-btn">Login Now</button>
+
+          <div class="divider"><span>or</span></div>
+
+          <button type="button" class="google-btn">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M19.99 10.1871C19.99 9.36767 19.9246 8.76973 19.7839 8.14966H10.1992V11.848H15.8656C15.7299 12.7671 15.0849 14.1512 13.7455 15.0813L13.7277 15.2051L16.7877 17.4969L16.9946 17.5174C18.8849 15.7789 19.99 13.2211 19.99 10.1871Z"
+                fill="#4285F4" />
+              <path
+                d="M10.1993 19.9313C12.8789 19.9313 15.1224 19.0454 16.9947 17.5174L13.7456 15.0813C12.8789 15.6682 11.7031 16.0779 10.1993 16.0779C7.59746 16.0779 5.38768 14.3395 4.59746 11.9366L4.47917 11.9465L1.30097 14.3273L1.26074 14.4391C3.12309 18.1317 6.40309 19.9313 10.1993 19.9313Z"
+                fill="#34A853" />
+              <path
+                d="M4.59746 11.9366C4.33582 11.3165 4.18849 10.6521 4.18849 9.96565C4.18849 9.27918 4.33582 8.61477 4.58663 7.99477L4.57956 7.86441L1.36087 5.44653L1.26074 5.49214C0.593541 6.84305 0.199219 8.36008 0.199219 9.96565C0.199219 11.5712 0.593541 13.0883 1.26074 14.4391L4.59746 11.9366Z"
+                fill="#FBBC05" />
+              <path
+                d="M10.1993 3.85336C12.1142 3.85336 13.406 4.66168 14.1425 5.33718L17.0207 2.59107C15.1142 0.985496 12.8789 0 10.1993 0C6.40309 0 3.12309 1.79958 1.26074 5.49214L4.58663 7.99477C5.38768 5.59194 7.59746 3.85336 10.1993 3.85336Z"
+                fill="#EB4335" />
+            </svg>
+            Login with Google
+          </button>
+
+          <div class="forgot-password">
+            <a href="#" class="forgot-link">Forget password?</a>
+            <a href="#" class="click-here">Click here</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</body>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const loginForm = document.getElementById('loginForm');
+    const emailInput = document.getElementById('email');
+    const passwordInput = document.getElementById('password');
+    const googleBtn = document.querySelector('.google-btn');
+    const createAccountLink = document.querySelector('.create-account');
+    const forgotPasswordLink = document.querySelector('.click-here');
+
+    // Handle Google login
+    googleBtn.addEventListener('click', function() {
+      console.log('Google login clicked');
+      alert('Google login functionality would be implemented later');
+    });
+
+    // Handle create account link
+    createAccountLink.addEventListener('click', function(e) {
+      e.preventDefault();
+      console.log('Create account clicked');
+      alert('Create account functionality would be implemented Later');
+    });
+
+    // Handle forgot password link
+    forgotPasswordLink.addEventListener('click', function(e) {
+      e.preventDefault();
+      console.log('Forgot password clicked');
+      alert('Forgot password functionality is with admin only');
+    });
+
+    // Add input focus effects
+    const inputs = document.querySelectorAll('input');
+    inputs.forEach(input => {
+      input.addEventListener('focus', function() {
+        this.parentElement.classList.add('focused');
+      });
+      
+      input.addEventListener('blur', function() {
+        this.parentElement.classList.remove('focused');
+      });
+    });
+  });
+
+</script>
+
+</html>

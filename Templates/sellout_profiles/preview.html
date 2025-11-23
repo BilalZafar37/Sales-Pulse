@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Preview Mapping · Customer Sell-Out Profile{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  <h3 class="mb-2">Preview Parsed Rows</h3>
+  <p class="text-muted mb-3">
+    <strong>File:</strong> {{ filename }} &nbsp;|&nbsp;
+    <strong>Rows shown:</strong> up to 100
+  </p>
+
+  <!-- Flash messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, msg in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+          {{ msg }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  {# --- Summary counts --- #}
+  {% set ns = namespace(total=0, errors=0) %}
+  {% for r in rows %}
+    {% set ns.total = ns.total + 1 %}
+    {% if r.ValidationErr %}{% set ns.errors = ns.errors + 1 %}{% endif %}
+  {% endfor %}
+  <div class="row g-3 mb-3">
+    <div class="col-auto">
+      <span class="badge bg-secondary">Total preview rows: {{ ns.total }}</span>
+    </div>
+    <div class="col-auto">
+      <span class="badge bg-danger">Rows with errors: {{ ns.errors }}</span>
+    </div>
+  </div>
+
+  <!-- Mapping quick view -->
+  <details class="mb-3">
+    <summary class="mb-2">Show selected mapping</summary>
+    <pre class="small bg-light p-2 border rounded">{{ mapping | tojson(indent=2) }}</pre>
+  </details>
+
+  <!-- Preview table -->
+  <div class="table-responsive">
+    <table class="table table-sm table-bordered table-hover align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>#</th>
+          <th>Date</th>
+          <th>Article</th>
+          <th>Customer SKU</th>
+          <th class="text-end">Qty</th>
+          <th>Store</th>
+          <th>Region</th>
+          <th>Invoice No</th>
+          <th>Brand</th>
+          <th>Site</th>
+          <th>Error</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+          <tr class="{% if r.ValidationErr %}table-danger{% endif %}">
+            <td class="text-muted">{{ r.SourceRow }}</td>
+            <td>{{ r.Date or '' }}</td>
+            <td class="mono">{{ r.Article or '' }}</td>
+            <td class="mono">{{ r.CustomerSKU or '' }}</td>
+            <td class="text-end">{{ r.Qty if r.Qty is not none else '' }}</td>
+            <td>{{ r.Store or '' }}</td>
+            <td>{{ r.Region or '' }}</td>
+            <td class="mono">{{ r.InvoiceNo or '' }}</td>
+            <td>{{ r.Brand or '' }}</td>
+            <td>{{ r.Site or '' }}</td>
+            <td>
+              {% if r.ValidationErr %}
+                <span class="badge bg-danger">{{ r.ValidationErr }}</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        {% if rows|length == 0 %}
+          <tr><td colspan="11" class="text-center text-muted">No rows parsed.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Actions -->
+  <div class="d-flex gap-2 mt-3">
+    <button type="button" class="btn btn-outline-secondary" onclick="history.back()">Back to Mapping</button>
+
+    <form method="post" action="{{ url_for('sellout_profiles.save_profile') }}" class="d-inline">
+      <!-- carry everything needed to save the profile without re-upload -->
+      <input type="hidden" name="Token" value="{{ token }}">
+      <input type="hidden" name="MappingJSON" value='{{ mapping | tojson }}'>
+      <input type="hidden" name="CustomerID" value="{{ request.form.get('CustomerID','') }}">
+      <input type="hidden" name="ProfileName" value="{{ request.form.get('ProfileName','') }}">
+      <input type="hidden" name="IsDefault" value="{{ 'on' if request.form.get('IsDefault') else '' }}">
+      <button class="btn btn-success">Save Profile</button>
+    </form>
+
+    <a href="{{ url_for('sellout_profiles.list_profiles') }}" class="btn btn-link">Profiles List</a>
+  </div>
+</div>
+
+<style>
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  details > summary { cursor: pointer; }
+</style>
+{% endblock %}

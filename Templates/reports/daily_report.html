@@ -1,0 +1,337 @@
+{% extends 'base.html' %}
+
+{% block styles %}
+  .page-wrap { padding: 16px 20px 80px; }
+  .table-responsive { overflow-x:auto; }
+  thead th.sticky { position: sticky; top: 0; background: #f8f9fa; z-index: 2; }
+  .header-band { background: #f1f3f5; border: 1px solid #e9ecef; border-radius: .5rem; padding: .75rem 1rem; }
+
+  /* Mandatory panel */
+  .required-card.sticky-top { top: 12px; z-index: 1030; }
+  .required-card {
+    border-left: 6px solid #8672FF;
+    box-shadow: 0 6px 18px rgba(0,0,0,.06);
+    background: linear-gradient(180deg, #ffffff, #fafbfc);
+  }
+  .required-hint { font-size: .875rem; color: #6c757d; }
+  .required-badge { font-size: .65rem; vertical-align: middle; }
+
+  /* Optional section header button */
+  .more-toggle { font-weight: 600; }
+
+  /* Numbers */
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+{% endblock %}
+
+{% block content %}
+<div class="content-with-sidebar wrapper">
+
+  <!-- ONE FORM holds both required + optional -->
+  <form id="filters">
+
+    <!-- ================= MANDATORY (Primary) ================= -->
+    <div class="card required-card sticky-top mb-3">
+      <div class="card-body">
+        <div class="d-flex flex-wrap align-items-end gap-3">
+          <div class="flex-grow-1" style="min-width:260px;">
+            <label class="form-label mb-1">
+              Brand <span class="badge bg-primary-subtle text-primary required-badge">Required</span>
+            </label>
+            <select class="form-select select2" id="brand" name="brand" required></select>
+            <div class="required-hint mt-1">Pick the brand to scope the daily movements.</div>
+          </div>
+
+          <div class="flex-grow-1" style="min-width:320px;">
+            <label class="form-label mb-1">
+              Customer <span class="badge bg-primary-subtle text-primary required-badge">Required</span>
+            </label>
+            <!-- value = ID, text = name -->
+            <select class="form-select select2" id="customer_id" name="customer_id" required></select>
+            <div class="required-hint mt-1">Search by customer name (not ID).</div>
+          </div>
+
+          <div class="d-flex flex-wrap align-items-end gap-2 ms-auto">
+            <button class="btn btn-primary px-4" id="runBtn" type="submit" disabled>
+              Run report
+            </button>
+            <button class="btn btn-outline-secondary" id="resetBtn" type="button">
+              Reset
+            </button>
+          </div>
+        </div>
+
+        <!-- Optional filters toggle -->
+        <div class="d-flex align-items-center mt-3">
+          <button class="btn btn-link p-0 more-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#optionalFilters" aria-expanded="false">
+            More filters
+          </button>
+          <span class="text-muted ms-2">(From/To date, Article, Sales Office/Group)</span>
+        </div>
+
+        <!-- ================= OPTIONAL (Advanced) ================= -->
+        <div id="optionalFilters" class="collapse mt-3">
+          <div class="row g-3">
+            <div class="col-6 col-md-2">
+              <label class="form-label">From</label>
+              <input class="form-control" name="date_from" type="date">
+            </div>
+            <div class="col-6 col-md-2">
+              <label class="form-label">To</label>
+              <input class="form-control" name="date_to" type="date">
+            </div>
+
+            <div class="col-12 col-md-3">
+              <label class="form-label">Article (optional)</label>
+              <select class="form-select select2" id="article_code" name="article_code"></select>
+            </div>
+
+            <div class="col-12 col-md-3">
+              <label class="form-label">Sales Office (optional)</label>
+              <select class="form-select select2" id="sales_office" multiple></select>
+            </div>
+
+            <div class="col-12 col-md-3">
+              <label class="form-label">Sales Group (optional)</label>
+              <select class="form-select select2" id="sales_group" multiple></select>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- /required card -->
+
+  </form>
+
+  <!-- ================= HEADER BAND (context + actions) ================= -->
+  <div class="header-band d-flex justify-content-between align-items-center mb-2" id="hdr">
+    <div>
+      <div class="small text-muted">Brand</div>
+      <div class="fw-semibold" id="hdrBrand">—</div>
+    </div>
+    <div>
+      <div class="small text-muted">Customer</div>
+      <div class="fw-semibold" id="hdrCust">—</div>
+    </div>
+    <div class="d-flex gap-2">
+      <div class="btn-group">
+        <button class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" id="exportBtn" disabled>
+          Export
+        </button>
+        <div class="dropdown-menu dropdown-menu-end">
+          <a class="dropdown-item" href="#" data-scope="filtered">Export (filtered)</a>
+          <a class="dropdown-item" href="#" data-scope="customer">Export (whole customer)</a>
+          <a class="dropdown-item" href="#" data-scope="all_brands">Export (all accessible brands)</a>
+        </div>
+      </div>
+      <button class="btn btn-outline-primary" id="loadMore" disabled>Load more</button>
+    </div>
+  </div>
+
+  <!-- ================= RESULTS ================= -->
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle" id="grid">
+        <thead class="table-light">
+          <tr>
+            <th class="sticky">Date</th>
+            <th class="sticky">Article</th>
+            <th class="sticky">Description</th>
+            <th class="sticky text-end">Sell-In</th>
+            <th class="sticky text-end">Sell-In Value</th>
+            <th class="sticky text-end">Return</th>
+            <th class="sticky text-end">Return Value</th>
+            <th class="sticky text-end">Sell-Out</th>
+            <th class="sticky text-end">Sell-Out Value</th>
+            <th class="sticky text-end">Current SOH</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+  const form = document.getElementById('filters');
+  const runBtn = document.getElementById('runBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const tbody = document.querySelector('#grid tbody');
+  const loadMoreBtn = document.getElementById('loadMore');
+  const exportToggle = document.getElementById('exportBtn');
+
+  const hdrBrand = document.getElementById('hdrBrand');
+  const hdrCust  = document.getElementById('hdrCust');
+
+  let nextOffset = 0;
+  let lastParams = null;
+  let selectedCustomerName = '';
+
+  const s2Ajax = (url, multiple=false) => ({
+    ajax: {
+      url, dataType: 'json', delay: 200,
+      data: params => ({ q: params.term || '', page: params.page || 1 }),
+      processResults: (data) => ({
+        results: data.results || data.items || [],
+        pagination: { more: data.pagination?.more }
+      })
+    },
+    width: '100%', multiple, placeholder: multiple ? '(any)' : '(choose)',
+    allowClear: true
+  });
+
+  async function initCustomers() {
+    try {
+      const res = await fetch('/sell-out/choices');
+      if (!res.ok) throw new Error('Failed to load customers');
+      const data = await res.json();
+  
+      const $cust = $('#customer_id');
+      $cust.empty().append(`<option value=""></option>`);
+  
+      (data.customers || []).forEach(c => {
+        const label = `${c.name} (${c.code})${c.level ? ' – ' + c.level : ''}`;
+        // value = id, text = label
+        $cust.append(new Option(label, c.id, false, false));
+      });
+  
+      $cust.select2({ width: '100%', placeholder: '(choose)', allowClear: true })
+        .on('select2:select', (e) => {
+          selectedCustomerName = e.params.data.text;
+          setRunState();
+        })
+        .on('change', setRunState);
+  
+    } catch (e) {
+      console.error(e);
+      alert('Could not load customers. Please refresh.');
+    }
+  }
+  
+
+  // Brand: value=name (text shows name too)
+  $('#brand').select2(s2Ajax('/daily/choices/brands')).on('change', setRunState);
+  // Customer: value=id, text=name
+ 
+
+  // Optional filters
+  $('#article_code').select2(s2Ajax('/daily/choices/articles'));
+  $('#sales_office').select2(s2Ajax('/daily/choices/sales_office', true));
+  $('#sales_group').select2(s2Ajax('/daily/choices/sales_group',  true));
+
+  function setRunState(){
+    const brand = $('#brand').val();
+    const cust  = $('#customer_id').val();
+    runBtn.disabled = !(brand && cust);
+  }
+
+  function toQS(obj) {
+    const parts = [];
+    for (const [k,v] of Object.entries(obj)) {
+      if (v === null || v === undefined || v === '' || (Array.isArray(v) && v.length===0)) continue;
+      parts.push(encodeURIComponent(k)+'='+encodeURIComponent(Array.isArray(v)? v.join(','): v));
+    }
+    return parts.join('&');
+  }
+  function fmtN(n){ if(n==null) return ''; const x=Number(n); return Number.isFinite(x)? x.toLocaleString(): n; }
+  function fmtD(d){
+    if(!d) return '';
+    const dt = new Date(d);
+    return dt.toLocaleDateString(undefined, { weekday:'short', day:'2-digit', month:'short', year:'numeric' });
+  }
+
+  async function fetchPage(params, append=false){
+    const qs = toQS({...params, offset: nextOffset, limit: 200});
+    const res = await fetch(`/daily/data?${qs}`);
+    const j = await res.json();
+    if(!j.ok){ alert(j.error || 'Failed'); return; }
+
+    // header
+    hdrBrand.textContent = params.brand || '—';
+    hdrCust.textContent  = j.header?.customer || selectedCustomerName || '—';
+
+    if(!append) tbody.innerHTML = '';
+    for(const r of j.items){
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${fmtD(r.Date)}</td>
+        <td>${r.ArticleCode || ''}</td>
+        <td>${r.Description || ''}</td>
+        <td class="text-end mono">${fmtN(r.sellin_qty)}</td>
+        <td class="text-end mono">${fmtN(r.sellin_val)}</td>
+        <td class="text-end mono">${fmtN(r.return_qty)}</td>
+        <td class="text-end mono">${fmtN(r.return_val)}</td>
+        <td class="text-end mono">${fmtN(r.sellout_qty)}</td>
+        <td class="text-end mono">${fmtN(r.sellout_val)}</td>
+        <td class="text-end mono">${fmtN(r.current_soh)}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+    nextOffset = j.next_offset || 0;
+    const hasMore = !!j.has_more;
+    loadMoreBtn.disabled = !hasMore;
+    exportToggle.disabled = (j.items || []).length === 0 && !append;
+  }
+
+  form.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const brand = $('#brand').val();
+    const cust  = $('#customer_id').val();
+    if(!brand || !cust){ setRunState(); return; }
+
+    const fd = new FormData(form);
+    const params = Object.fromEntries(fd.entries());
+    // multi selects
+    params.sales_office = $('#sales_office').val() || [];
+    params.sales_group  = $('#sales_group').val() || [];
+
+    lastParams = params;
+    nextOffset = 0;
+    await fetchPage(params, false);
+  });
+
+  resetBtn.addEventListener('click', ()=>{
+    // clear all fields
+    $('#brand').val(null).trigger('change');
+    $('#customer_id').val(null).trigger('change');
+    $('#article_code').val(null).trigger('change');
+    $('#sales_office').val(null).trigger('change');
+    $('#sales_group').val(null).trigger('change');
+    form.reset();
+    tbody.innerHTML = '';
+    hdrBrand.textContent = '—';
+    hdrCust.textContent  = '—';
+    loadMoreBtn.disabled = true;
+    exportToggle.disabled = true;
+    selectedCustomerName = '';
+    nextOffset = 0;
+    setRunState();
+  });
+
+  loadMoreBtn.addEventListener('click', async ()=>{
+    if(!lastParams) return;
+    await fetchPage(lastParams, true);
+  });
+
+  // Exports
+  document.querySelectorAll('.dropdown-item[data-scope]').forEach(a=>{
+    a.addEventListener('click', (e)=>{
+      e.preventDefault();
+      if(!lastParams){ alert('Run the report first.'); return; }
+      const scope = a.dataset.scope;
+      const params = { ...lastParams };
+      const qs = toQS({ ...params, scope });
+      window.location.href = `/daily/export.csv?${qs}`;
+    });
+  });
+
+  // initial state
+  setRunState();
+  initCustomers();
+</script>
+{% endblock %}

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SALESPULSE</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/css/bootstrap-datepicker.min.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"/>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/js/bootstrap-datepicker.min.js"></script>
+  <style>
+    .wrapper {
+      box-sizing: border-box;
+      background-color: #2E2B41;
+      width: 90%;
+      max-width: 500px;
+      padding: 30px 20px;
+      border-radius: 20px;
+      box-shadow: 5px 5px 15px rgba(0, 0, 0, 0.3);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 20px;
+      color: white;
+    }
+    .main-div {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .button {
+      background-color: #8672FF;
+      color: white;
+    }
+    .icon {
+      font-size: 25px;
+      color: #8672FF;
+      background-color: white;
+    }
+    .footer {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      background-color: #8672FF;
+      color: white;
+      text-align: left;
+      padding: 10px 20px;
+      font-family: Arial, sans-serif;
+      font-size: 16px;
+      box-shadow: 0 -2px 10px #8672FF;
+      z-index: 1000;
+    }
+  </style>
+</head>
+<body>
+  <main class="main-div">
+    <div class="wrapper">
+      <form class="row g-3">
+        <div class="col-md-6">
+          <label for="Article" class="form-label">Article</label>
+          <select class="form-select">
+            <option selected disabled>Choose...</option>
+            <option>Article1</option>
+            <option>Article2</option>
+            <option>Article3</option>
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label for="Brand" class="form-label">Brand</label>
+          <select class="form-select">
+            <option selected disabled>Choose...</option>
+            <option>Brand1</option>
+            <option>Brand2</option>
+            <option>Brand3</option>
+          </select>
+        </div>
+        <div class="col-12">
+          <label class="form-label">Customer</label>
+          <select class="form-select">
+            <option selected disabled>Choose...</option>
+            <option>Customer1</option>
+            <option>Customer2</option>
+            <option>Customer3</option>
+          </select>
+        </div>
+        <div class="col-12">
+          <label class="form-label">Category</label>
+          <select class="form-select">
+            <option selected disabled>Choose...</option>
+            <option>Cat1</option>
+            <option>Cat2</option>
+            <option>Cat3</option>
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="col-form-label">From</label>
+          <div class="input-group date" id="datepickerFrom">
+            <input type="text" class="form-control" />
+            <span class="input-group-append">
+              <span class="input-group-text"><i class="fa fa-calendar icon"></i></span>
+            </span>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <label class="col-form-label">To</label>
+          <div class="input-group date" id="datepickerTo">
+            <input type="text" class="form-control" />
+            <span class="input-group-append">
+              <span class="input-group-text"><i class="fa fa-calendar icon"></i></span>
+            </span>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">New Price</label>
+          <input type="Number" id="price" class="form-control" >
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Qty Number</label>
+         <input type="Number" id="qty" class="form-control" >
+        </div>
+        <div class="col-12">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="gridCheck" />
+            <label class="form-check-label" for="gridCheck">Confirm</label>
+          </div>
+        </div>
+        <div class="col-12">
+          <button type="submit" class="btn button">Submit</button>
+        </div>
+      </form>
+    </div>
+    <footer class="footer">
+    @Modern Electronics
+  </footer>
+  </main>
+
+  <script type="text/javascript">
+    $(function () {
+      $('#datepickerFrom').datepicker();
+      $('#datepickerTo').datepicker();
+    });
+  </script>
+</body>
+</html>

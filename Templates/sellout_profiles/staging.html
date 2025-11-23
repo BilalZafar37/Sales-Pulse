@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block title %}Staging · Upload {{ upload_id }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex align-items-center justify-content-between mb-2">
+    <h3 class="mb-0">Staging Rows · Upload #{{ upload_id }}</h3>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary" href="javascript:location.reload()">Refresh</a>
+      <a class="btn btn-secondary" href="{{ url_for('sellout_profiles.list_profiles') }}">Back to Profiles</a>
+    </div>
+  </div>
+
+  <!-- Flash messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, msg in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+          {{ msg }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <!-- Quick stats -->
+  {% set ns = namespace(total=0, errors=0, qty=0) %}
+  {% for r in rows %}
+    {% set ns.total = ns.total + 1 %}
+    {% if r.ValidationErr %}{% set ns.errors = ns.errors + 1 %}{% endif %}
+    {% if r.Qty %}{% set ns.qty = ns.qty + r.Qty %}{% endif %}
+  {% endfor %}
+
+  <div class="row g-2 mb-3">
+    <div class="col-auto">
+      <span class="badge bg-secondary">Rows: {{ ns.total }}</span>
+    </div>
+    <div class="col-auto">
+      <span class="badge bg-danger">Errors: {{ ns.errors }}</span>
+    </div>
+    <div class="col-auto">
+      <span class="badge bg-info text-dark">Qty Σ: {{ '%.3f'|format(ns.qty) }}</span>
+    </div>
+    <div class="col-auto">
+      <span class="text-muted small">Showing up to 5,000 rows</span>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="row g-2 align-items-end mb-3">
+    <div class="col-md-3">
+      <label class="form-label">Search</label>
+      <input id="q" class="form-control" placeholder="Search Article / Customer SKU / Invoice / Store / Region">
+    </div>
+    <div class="col-md-2 form-check mt-4">
+      <input class="form-check-input" type="checkbox" id="errorsOnly">
+      <label class="form-check-label" for="errorsOnly">Errors only</label>
+    </div>
+    <div class="col-md-2">
+      <button id="btnExport" class="btn btn-outline-primary mt-4">Export CSV</button>
+    </div>
+    <!-- Optional: wire to your posting endpoint when ready
+    <div class="col-md-3">
+      <form method="post" action="{{ url_for('sellout_posting.post_from_staging', upload_id=upload_id) }}">
+        <button class="btn btn-success mt-4">Post Valid Rows to Ledger</button>
+      </form>
+    </div>
+    -->
+  </div>
+
+  <!-- Table -->
+  <div class="table-responsive">
+    <table id="stagingTbl" class="table table-sm table-bordered table-hover align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Row#</th>
+          <th>Date</th>
+          <th>Article</th>
+          <th>Customer SKU</th>
+          <th class="text-end">Qty</th>
+          <th>Store</th>
+          <th>Region</th>
+          <th>Invoice</th>
+          <th>Brand</th>
+          <th>Site</th>
+          <th>Error</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr class="stg-row {% if r.ValidationErr %} has-error table-danger{% endif %}">
+          <td class="text-muted">{{ r.SourceRow }}</td>
+          <td data-key="date">{{ r.Date or '' }}</td>
+          <td data-key="article" class="mono">{{ r.Article or '' }}</td>
+          <td data-key="csku" class="mono">{{ r.CustomerSKU or '' }}</td>
+          <td data-key="qty" class="text-end">{{ r.Qty if r.Qty is not none else '' }}</td>
+          <td data-key="store">{{ r.Store or '' }}</td>
+          <td data-key="region">{{ r.Region or '' }}</td>
+          <td data-key="invoice" class="mono">{{ r.InvoiceNo or '' }}</td>
+          <td data-key="brand">{{ r.Brand or '' }}</td>
+          <td data-key="site">{{ r.Site or '' }}</td>
+          <td data-key="err">
+            {% if r.ValidationErr %}
+              <span class="badge bg-danger">{{ r.ValidationErr }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        {% if rows|length == 0 %}
+        <tr><td colspan="11" class="text-center text-muted py-4">No staged rows found for this upload.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="mt-3 text-muted small">
+    Tip: Use <strong>Errors only</strong> to focus on bad rows. Fix the mapping profile if many rows are red;
+    otherwise you can proceed to post only valid rows (when the posting action is enabled).
+  </div>
+</div>
+
+<style>
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  #stagingTbl tbody tr.hidden { display: none; }
+</style>
+
+<script>
+(function(){
+  const q = document.getElementById('q');
+  const errOnly = document.getElementById('errorsOnly');
+  const tbl = document.getElementById('stagingTbl');
+  const rows = Array.from(tbl.querySelectorAll('tbody tr.stg-row'));
+
+  function matchesQuery(tr, query){
+    if(!query) return true;
+    const hay = [
+      tr.querySelector('[data-key="article"]')?.textContent || '',
+      tr.querySelector('[data-key="csku"]')?.textContent || '',
+      tr.querySelector('[data-key="invoice"]')?.textContent || '',
+      tr.querySelector('[data-key="store"]')?.textContent || '',
+      tr.querySelector('[data-key="region"]')?.textContent || '',
+      tr.querySelector('[data-key="brand"]')?.textContent || '',
+      tr.querySelector('[data-key="site"]')?.textContent || '',
+    ].join(' ').toLowerCase();
+    return hay.includes(query.toLowerCase());
+  }
+
+  function applyFilters(){
+    const query = q.value.trim();
+    const onlyErr = errOnly.checked;
+
+    let shown = 0;
+    rows.forEach(tr => {
+      const isErr = tr.classList.contains('has-error');
+      const qok = matchesQuery(tr, query);
+      const eok = (!onlyErr) || isErr;
+      const show = qok && eok;
+      tr.classList.toggle('hidden', !show);
+      if (show) shown++;
+    });
+  }
+
+  q.addEventListener('input', applyFilters);
+  errOnly.addEventListener('change', applyFilters);
+  applyFilters();
+
+  // Export visible rows to CSV
+  document.getElementById('btnExport').addEventListener('click', () => {
+    const headers = Array.from(tbl.querySelectorAll('thead th')).map(th => th.textContent.trim());
+    const visibleRows = rows.filter(tr => !tr.classList.contains('hidden'));
+    const lines = [headers.join(',')];
+
+    visibleRows.forEach(tr => {
+      const cells = Array.from(tr.children).map(td => {
+        let txt = td.textContent.trim().replaceAll('\n',' ').replaceAll('\r',' ');
+        // escape CSV
+        if (txt.includes(',') || txt.includes('"')) {
+          txt = '"' + txt.replaceAll('"', '""') + '"';
+        }
+        return txt;
+      });
+      lines.push(cells.join(','));
+    });
+
+    const blob = new Blob([lines.join('\n')], {type: 'text/csv;charset=utf-8;'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `staging_upload_{{ upload_id }}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+})();
+</script>
+{% endblock %}

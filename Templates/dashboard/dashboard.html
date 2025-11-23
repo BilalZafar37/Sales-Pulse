@@ -1,0 +1,334 @@
+{% extends "base.html" %}
+
+{% block styles %}
+  body { background-color:#fafafa; font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+  .section-title { font-weight:700; margin:20px 0 10px; }
+  .card-custom { border-radius:15px; padding:20px; text-align:center; box-shadow:0 3px 8px rgba(0,0,0,.05); background:#fff; }
+  .purple-card { background:#e9e3fb; }
+  .highlight-box { border-radius:12px; padding:15px; margin-bottom:15px; font-weight:700; }
+  .highlight-green{ background:#d6f5f2; color:#00796b; }
+  .highlight-pink{ background:#fcd6e0; color:#c2185b; }
+  .highlight-purple{ background:#e3e0f8; color:#4527a0; }
+  .highlight-blue{ background:#e0f0ff; color:#004c99; }
+
+  .dash-badge {
+    display:inline-flex; align-items:center; gap:8px;
+    padding:10px 14px; border-radius:999px; font-weight:700;
+    background:#efeaff; border:1px solid #e2d9ff; color:#4a2ea6;
+    box-shadow:0 2px 6px rgba(74,46,166,.12) inset;
+    border-radius: 11px;
+  }
+  .mini-box{ background:#fff; border-radius:10px; padding:14px; min-width:150px; min-height:90px; margin:3px; box-shadow:0 2px 6px rgba(0,0,0,.05); transition:transform .2s ease, box-shadow .2s ease; cursor:pointer; display:flex; flex-direction:column; justify-content:center; align-items:center; }
+  .mini-box h6{ margin:0; font-weight:600; font-size:.95rem; }
+  .mini-box small{ display:block; font-size:.75rem; color:#555; }
+  .mini-box:hover{ transform:translateY(-3px); box-shadow:0 4px 12px rgba(0,0,0,.15); background:#e3e0f8; }
+
+  .tables-card{ background:#fff; border-radius:15px; padding:18px; box-shadow:0 3px 8px rgba(0,0,0,.05); margin-top:20px; }
+  .table-wrapper{ background:#fff; border:1px solid #e6e6e6; border-radius:10px; padding:12px; min-height:1px; }
+  .tab-head{ background:#e3e0f8; padding:10px; }
+
+  .interactive-table{ width:100%; border-collapse:collapse; table-layout:fixed; }
+  .interactive-table th,.interactive-table td{ padding:10px; text-align:center; border-bottom:1px solid #e8e8e8; cursor:pointer; transition:background-color .12s ease; user-select:none; }
+  .interactive-table thead th{ font-weight:600; }
+  .interactive-table tr:last-child td{ border-bottom:none; }
+  .interactive-table td:hover,.interactive-table th:hover{ background-color:rgba(92,45,145,.06); }
+  .hover-row td,.hover-row th,.hover-col{ background-color:rgba(92,45,145,.08) !important; }
+
+  .chart-container{ position:relative; width:100%; }
+  .chart-lg{ height:350px; } .chart-sm{ height:280px; }
+  .chart-container canvas{ width:100% !important; height:100% !important; display:block; }
+
+  @media (max-width: 767.98px){ .table-wrapper{ margin-bottom:12px; } }
+  .top-bar{ display:flex; justify-content:flex-end; align-items:center; padding:10px; }
+
+  .filters-card { border:1px solid #ddd; border-radius:10px; box-shadow:0 2px 6px rgba(0,0,0,.08); }
+  .filters-header { display:flex; align-items:center; justify-content:space-between; padding:.85rem 1rem; border-bottom:1px solid #eee; border-radius:10px 10px 0 0; background:#f7f6ff; color:#4527a0; font-weight:600; }
+  .filters-toggle { border:none; background:#4527a0; color:#fff; border-radius:8px; padding:.45rem .7rem; cursor:pointer; }
+  .filters-body{ padding:1rem; }
+  .tabHead{ background:#e3e0f8; color:#4527a0; border-radius:8px; }
+
+  @keyframes popUp{ 0%{ transform:scale(.8); opacity:0;} 60%{ transform:scale(1.05); opacity:1;} 100%{ transform:scale(1); opacity:1;} }
+  .top-cards .card-custom{ opacity:0; transform:scale(.8); }
+  .top-cards .card-custom.animate{ animation:popUp .6s ease forwards; }
+
+  .kpi-grid {
+    display:grid; grid-template-columns:repeat(2, minmax(0,1fr));
+    gap:10px; margin-top:2px;
+  }
+  .stat-tile {
+    background:#fff; border-radius:12px; padding:14px;
+    box-shadow:0 2px 10px rgba(0,0,0,.05);
+    text-align:center; display:flex; flex-direction:column; gap:4px; min-height:85px;
+  }
+  .stat-tile h6 { margin:0; font-weight:800; font-size:1.05rem; }
+  .stat-tile small { color:#6b7280; font-weight:600; }
+  .stat-tile:hover { transform:translateY(-2px); transition:transform .15s ease; }
+{% endblock %}
+
+{% block content %}
+<div class="content-with-sidebar wrapper">
+  <div class="container mt-4 p-2">
+    <!-- Filters -->
+    <div class="filters-card">
+      <div class="filters-header">
+        <span>Filters</span>
+        <div class="d-flex gap-2 align-items-center">
+          <button id="resetFiltersBtn" class="btn btn-light btn-sm">Reset</button>
+          <button id="applyFiltersBtn" class="btn btn-primary btn-sm">Apply</button>
+          <button class="filters-toggle collapsed" type="button"
+                  data-bs-toggle="collapse" data-bs-target="#filtersCollapse"
+                  aria-expanded="false" aria-controls="filtersCollapse">
+            <i id="filtersChevron" class="fa-solid fa-chevron-down"></i>
+          </button>
+        </div>
+      </div>
+
+      <div id="filtersCollapse" class="collapse"><!-- start collapsed -->
+        <div class="filters-body">
+          <div class="row g-3">
+
+            <!-- Date range -->
+            <div class="col-md-3">
+              <div class="border p-3 tabHead h-100">
+                <h6>Window</h6>
+                <label class="form-label mb-1">From</label>
+                <input id="filter-from" type="date" class="form-control mb-2">
+                <label class="form-label mb-1">To</label>
+                <input id="filter-to" type="date" class="form-control">
+              </div>
+            </div>
+
+            <!-- Identification -->
+            <div class="col-md-5">
+              <div class="border p-3 tabHead h-100">
+                <h6>Identifiers</h6>
+                <div class="row g-2">
+                  <div class="col-md-6">
+                    <input id="filter-brand" class="form-control" placeholder="Brand (comma separated)">
+                  </div>
+                  <div class="col-md-6">
+                    <input id="filter-customer" class="form-control" placeholder="CustomerID(s)">
+                  </div>
+                  <div class="col-md-6">
+                    <input id="filter-category" class="form-control" placeholder="CategoryID(s)">
+                  </div>
+                  <div class="col-md-6">
+                    <input id="filter-sku" class="form-control" placeholder="SKU ArticleCode(s)">
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sell-In extra filters -->
+            <div class="col-md-4">
+              <div class="border p-3 tabHead h-100">
+                <h6>Sell-In Filters</h6>
+                <div class="row g-2">
+                  <div class="col-md-6">
+                    <input id="filter-salesgroup" class="form-control" placeholder="Sales Group(s)">
+                  </div>
+                  <div class="col-md-6">
+                    <input id="filter-channel" class="form-control" placeholder="Channel(s)">
+                  </div>
+                  <div class="col-md-12">
+                    <input id="filter-site" class="form-control" placeholder="Site / SalesOffice(s)">
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div><!-- /.row -->
+        </div><!-- /.filters-body -->
+      </div><!-- /.collapse -->
+    </div><!-- /.filters-card -->
+  </div>
+
+  <div class="container mt-4 p-2">
+    <h4 class="section-title">Sell-In vs Sell-Out</h4>
+    <span class="dash-badge">
+      <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l3 7h7l-5.6 4.1 2.2 6.9L12 17l-6.6 4.9 2.2-6.9L2 9h7z" fill="currentColor"/></svg>
+      Overview
+    </span>
+
+    <!-- KPI Cards -->
+    <div class="row mt-4 g-4 top-cards">
+      <!-- Card 1 -->
+      <div class="col-md-4">
+        <div class="card-custom purple-card">
+          <h5>Sell-Through</h5>
+          <div class="highlight-box highlight-green">
+            <span id="kpi-sellthrough">-- %</span><br><small>Sell-Out ÷ Sell-In (Qty)</small>
+          </div>
+          <!-- <div class="d-flex justify-content-center flex-wrap">
+            <div class="mini-box">
+              <h6 id="kpi-sellin-qty">--</h6><small>Sell-In Qty</small>
+            </div>
+            <div class="mini-box">
+              <h6 id="kpi-sellout-qty">--</h6><small>Sell-Out Qty</small>
+            </div>
+          </div> -->
+          <div class="kpi-grid">
+            <div class="stat-tile">
+              <h6 id="kpi-sellin-qty">--</h6><small>Sell-In Qty</small>
+            </div>
+            <div class="stat-tile">
+              <h6 id="kpi-sellout-qty">--</h6><small>Sell-Out Qty</small>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Card 2 -->
+      <div class="col-md-4">
+        <div class="card-custom purple-card">
+          <h5>Inventory & Coverage</h5>
+          <div class="highlight-box highlight-blue">
+            <span id="kpi-inv-balance">--</span><br><small>Inventory Balance (Qty)</small>
+          </div>
+          <!-- <div class="d-flex justify-content-center flex-wrap">
+            <div class="mini-box">
+              <h6 id="kpi-customers-reporting">--</h6><small>Customers Reporting</small>
+            </div>
+            <div class="mini-box">
+              <h6 id="kpi-active-skus">--</h6><small>Active SKUs</small>
+            </div>
+          </div> -->
+          <div class="kpi-grid">
+            <div class="stat-tile">
+              <h6 id="kpi-customers-reporting">--</h6><small>Customers Reporting</small>
+            </div>
+            <div class="stat-tile">
+              <h6 id="kpi-active-skus">--</h6><small>Active SKUs</small>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Card 3 -->
+      <div class="col-md-4">
+        <div class="card-custom purple-card">
+          <h5>Reporting Status</h5>
+          <div class="highlight-box highlight-pink">
+            <span id="kpi-pending-uploads">--</span><br><small>Pending Uploads</small>
+          </div>
+          <!-- <div class="d-flex justify-content-center flex-wrap">
+            <div class="mini-box">
+              <h6 id="kpi-last-upload">--</h6><small>Last Upload</small>
+            </div>
+            <div class="mini-box">
+              <h6 id="kpi-potential-negatives">--</h6><small>Potential Negatives</small>
+            </div>
+          </div> -->
+          <div class="kpi-grid">
+            <div class="stat-tile">
+              <h6 id="kpi-last-upload">--</h6><small>Last Upload</small>
+            </div>
+            <div class="stat-tile">
+              <h6 id="kpi-potential-negatives">--</h6><small>Potential Negatives</small>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tables -->
+    <h4 class="section-title mt-5">Customer & Product Views</h4>
+    <div class="tables-card">
+      <div class="mb-3">
+        <button id="showTable1Btn" class="btn btn-outline-primary me-2">
+          <i class="fas fa-users me-1"></i> Customers
+        </button>
+        <button id="showTable2Btn" class="btn btn-outline-success">
+          <i class="fas fa-box-open me-1"></i> Products
+        </button>
+      </div>
+
+      <div class="row g-3">
+        <!-- Customers -->
+        <div id="table1Wrapper" class="col-md-12">
+          <div class="table-wrapper">
+            <h6 class="mb-2 tab-head">Top Customers (by Sell-Out Qty)</h6>
+            <table class="interactive-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Name</th>
+                  <th>Level</th>
+                  <th>SO-Uploads</th>
+                  <th>Total Qty</th>
+                  <th>Last Reported</th>
+                </tr>
+              </thead>
+              <tbody id="table-customers-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Products -->
+        <div id="table2Wrapper" class="col-md-12" style="display:none">
+          <div class="table-wrapper">
+            <h6 class="mb-2 tab-head">Top Products (Qty, with Latest SOH)</h6>
+            <table class="interactive-table">
+              <thead>
+                <tr>
+                  <th>SKU ID</th>
+                  <th>ArticleCode</th>
+                  <th>Description</th>
+                  <th>Brand</th>
+                  <th>Category</th>
+                  <th>Sold Qty</th>
+                  <th>Stock</th>
+                  <th>Last Sell-Out</th>
+                </tr>
+              </thead>
+              <tbody id="table-products-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Analytics -->
+    <h4 class="section-title mt-5">Analytics & Charts</h4>
+    <div class="row g-4">
+      <div class="col-12">
+        <div class="card-custom">
+          <h5>Monthly Overview</h5>
+          <div class="chart-container chart-lg"><canvas id="chart1"></canvas></div>
+        </div>
+      </div>
+    </div>
+    <div class="row g-4 mt-1">
+      <div class="col-md-6">
+        <div class="card-custom">
+          <h5>Sell-Out by Category</h5>
+          <div class="chart-container chart-sm"><canvas id="chart2"></canvas></div>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="card-custom">
+          <h5>Sell-Out by Brand</h5>
+          <div class="chart-container chart-sm"><canvas id="chart3"></canvas></div>
+        </div>
+      </div>
+    </div>
+    <div class="row g-4 mt-1">
+      <div class="col-md-6">
+        <div class="card-custom">
+          <h5>Sell-Through % (Monthly)</h5>
+          <div class="chart-container chart-sm"><canvas id="chart4"></canvas></div>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="card-custom">
+          <h5>Repeat vs New Customers</h5>
+          <div class="chart-container chart-sm"><canvas id="chart5"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<!-- <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script> -->
+{% endblock %}

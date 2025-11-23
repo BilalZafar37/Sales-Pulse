@@ -1,0 +1,21 @@
+SOH check along with sell-in (Existing) when sell-out uploading 
+Similarly Sell-out template should also include SKU if they have SOH
+In Sell-out template SKU mapping Default 0 Zero issue 
+Approvals page issue giving wrong errors 
+On approvals page MECL-Article add karna ha 
+Remove brand from SOH current location
+SOH should populate Article master | SOH should take brand per line
+SOH should have spelling check on Brand column (Dropdown)
+Check all filters (Specially Sell-in page)
+Upload file mandatory 
+Reports export ni ho ri 
+SOH upload giving wrong error
+
+
+PHASE 2==================
+Users list page (Activate button and details per user )
+Users Audit logs page 
+User Format Mapping For sell-out upload 
+Customers management page (Statuses and activation logic)
+Customers Contact Book 
+

@@ -1,0 +1,620 @@
+{% extends 'base.html' %}
+
+{% block styles %}
+/* Layout / spacing */
+    .page-wrap { padding: 16px 20px 80px; }
+    .filters .form-label { font-size: .8rem; color:#6c757d; }
+    .filters .select2-container--default .select2-selection--multiple {
+      min-height: calc(2.3rem + 2px);
+      border-color: #ced4da;
+    }
+
+    /* Table ergonomics + scroll */
+    .table-responsive { overflow-x: auto !important; }
+    #grid { white-space: nowrap; }
+    #grid th, #grid td { vertical-align: middle; }
+    /* Give numeric columns some width so they’re not cramped */
+    #grid th.num, #grid td.num { min-width: 90px; text-align: right; }
+    #grid th.wide, #grid td.wide { min-width: 160px; }
+    #grid th.mid,  #grid td.mid  { min-width: 120px; }
+    #grid th.price, #grid td.price { min-width: 110px; text-align: right; }
+
+    thead th.sticky {
+      position: sticky; top: 0; background: #f8f9fa; z-index: 2;
+      box-shadow: inset 0 -1px 0 rgba(0,0,0,.05);
+    }
+
+    .loading-shim { display:none; }
+    .loading .loading-shim { display:block; }
+    .loading tbody { opacity: .35; }
+
+    .cursor-pointer { cursor: pointer; }
+
+    /* Subtle bucket heat backgrounds — applied inline; this is a fallback class if needed */
+    .bucket-cell { transition: background-color .15s ease; }
+
+    /* Tooltip helper for price note icon */
+    .info-dot {
+      display:inline-block; width: 16px; height: 16px; line-height: 16px;
+      text-align:center; border-radius:50%; font-size:11px; margin-left:4px;
+      background:#eef2ff; color:#495057;
+    }
+{% endblock %}
+
+
+{% block content %}
+
+<div class="content-with-sidebar wrapper">
+  <!-- ===================== FILTERS ===================== -->
+  <div class="card mb-3">
+    <div class="card-body">
+      <form id="filters" class="filters">
+        <div class="row g-3">
+          <div class="col-12 col-md-2">
+            <label class="form-label">As of date</label>
+            <input type="date" class="form-control" name="as_of_date" value="{{ as_of_date }}">
+          </div>
+      
+          <div class="col-12 col-md-4">
+            <label class="form-label">Customer</label>
+            <select class="form-select select2" id="fCustomer" name="customer_id" data-placeholder="All customers"></select>
+          </div>
+      
+          <div class="col-12 col-md-3">
+            <label class="form-label">Brand</label>
+            <select class="form-select select2" id="fBrand" name="brand" data-placeholder="All brands"></select>
+          </div>
+      
+          <div class="col-12 col-md-3">
+            <label class="form-label">Article</label>
+            <select class="form-select select2" id="fArticle" name="article_code" data-placeholder="All articles"></select>
+          </div>
+      
+          <div class="col-6 col-md-2">
+            <label class="form-label">Only positive SOH</label>
+            <select class="form-select" name="only_positive_soh">
+              <option value="">No</option>
+              <option value="1">Yes</option>
+            </select>
+          </div>
+      
+          <div class="col-12 col-md-6">
+            <label class="form-label">Sales Office (multi)</label>
+            <select class="form-select select2" name="sales_office" multiple data-placeholder="Type or pick…"></select>
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label">Sales Group (multi)</label>
+            <select class="form-select select2" name="sales_group" multiple data-placeholder="Type or pick…"></select>
+          </div>
+      
+          <div class="col-6 col-md-2">
+            <label class="form-label">Min Age (days)</label>
+            <input type="number" class="form-control" name="min_age_days" placeholder="0">
+          </div>
+          <div class="col-6 col-md-2">
+            <label class="form-label">Max Age (days)</label>
+            <input type="number" class="form-control" name="max_age_days" placeholder="e.g. 180">
+          </div>
+      
+          <div class="col-12 col-md-3">
+            <label class="form-label">Sort</label>
+            <select class="form-select" name="sort">
+              <option value="">Customer, Brand, Article</option>
+              <option value="age_desc">Average Age (desc)</option>
+              <option value="soh_desc">SOH (desc)</option>
+              <option value="oldest_first">Oldest Lot Date</option>
+            </select>
+          </div>
+      
+          <div class="col-12 col-md-5 d-flex align-items-end justify-content-end">
+            <div class="btn-group">
+              <button class="btn btn-primary" type="submit">Apply</button>
+              <button class="btn btn-outline-secondary" type="button" id="resetBtn">Reset</button>
+              <a class="btn btn-success" id="exportBtn" href="#" download>Export CSV</a>
+            </div>
+          </div>
+        </div>
+      </form>
+      
+    </div>
+  </div>
+
+  <!-- ===================== KPIs ===================== -->
+  <div class="row g-3 mb-2">
+    <div class="col-6 col-md-3">
+      <div class="card"><div class="card-body">
+        <div class="text-muted small">Rows</div>
+        <div class="h5 mb-0" id="kpi-rows">0</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card"><div class="card-body">
+        <div class="text-muted small">Total SOH</div>
+        <div class="h5 mb-0" id="kpi-soh">0</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card"><div class="card-body">
+        <div class="text-muted small">Avg Age (weighted)</div>
+        <div class="h5 mb-0" id="kpi-avg-age">—</div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- ===================== GRID ===================== -->
+  <div class="card">
+    <div class="card-body">
+      <div class="table-responsive position-relative" id="gridWrap">
+        <div class="loading-shim text-center py-4">
+          <div class="spinner-border text-primary" role="status"></div>
+          <div class="mt-2 text-muted">Loading…</div>
+        </div>
+
+        <table class="table table-sm table-hover align-middle" id="grid">
+          <thead class="table-light">
+            <tr>
+              <th class="sticky wide">Customer</th>
+              <th class="sticky mid">Brand</th>
+              <th class="sticky mid">Article</th>
+              <th class="sticky wide">Description</th>
+
+              <th class="sticky num">0–30</th>
+              <th class="sticky num">31–60</th>
+              <th class="sticky num">61–90</th>
+              <th class="sticky num">90+</th>
+
+              <th class="sticky num">SOH</th>
+              <th class="sticky num">Avg Age</th>
+              <th class="sticky mid text-center">Oldest Lot</th>
+              <th class="sticky mid">Newest Lot</th>
+              <th class="sticky num">Total In</th>
+              <th class="sticky num">Total Out</th>
+              <th class="sticky mid">Last Sell-out</th>
+              <th class="sticky mid">Last Movement</th>
+
+              <!-- Prices from backend (if present) -->
+              <th class="sticky price">Avg Price <span class="info-dot"
+                  data-bs-toggle="tooltip" title="Indicative Sell-In averages by customer/article. May vary by shipment.">i</span></th>
+              <th class="sticky price">High</th>
+              <th class="sticky price">Low</th>
+              <th class="sticky price">Last</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+
+          <tfoot class="table-light">
+            <tr>
+              <th colspan="4" class="text-end">Totals:</th>
+              <th class="text-end" id="ft-0-30">0</th>
+              <th class="text-end" id="ft-31-60">0</th>
+              <th class="text-end" id="ft-61-90">0</th>
+              <th class="text-end" id="ft-90p">0</th>
+              <th class="text-end" id="ft-soh">0</th>
+              <th class="text-end" id="ft-avg">—</th>
+              <th colspan="6"></th>
+              <th colspan="4"></th>
+            </tr>
+          </tfoot>
+        </table>
+
+        <div class="d-flex align-items-center justify-content-between mt-2" id="pager">
+          <div>
+            <label class="me-2 text-muted small">Rows per page</label>
+            <select id="pageSize" class="form-select form-select-sm d-inline-block" style="width:auto;">
+              <option>25</option>
+              <option selected>50</option>
+              <option>100</option>
+              <option>250</option>
+            </select>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <button id="prevPage" class="btn btn-sm btn-outline-secondary">Prev</button>
+            <span class="small text-muted" id="pageInfo">Page 1 of 1</span>
+            <button id="nextPage" class="btn btn-sm btn-outline-secondary">Next</button>
+          </div>
+        </div>
+        
+      </div>
+      <div class="text-muted small mt-2">
+        Tip: click a row to see lot-level layers (receipt dates & remaining qty).
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== LOT MODAL ===================== -->
+  <div class="modal fade" id="detailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Lot-level Layers</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="table-responsive">
+            <table class="table table-sm">
+              <thead class="table-light">
+                <tr>
+                  <th>Article</th>
+                  <th>Description</th>
+                  <th>Brand</th>
+                  <th>Lot Date</th>
+                  <th class="text-end">Remaining</th>
+                  <th class="text-end">Age (days)</th>
+                </tr>
+              </thead>
+              <tbody id="detailBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+  <!-- Bootstrap Bundle (with Popper for tooltips/modals) -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- jQuery + Select2 -->
+  <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+
+<script>
+  // Cached jQuery handles
+  const $fCustomer = $('#fCustomer');
+  const $fBrand    = $('#fBrand');
+  const $fArticle  = $('#fArticle');
+
+  // Basic Select2
+  $(function(){
+    $('.select2').select2({ width: '100%', allowClear: true, placeholder: function(){ return $(this).data('placeholder') || ''; } });
+  });
+
+  // Existing API for customers & brands
+  async function loadChoices() {
+    try {
+      const res = await fetch('/sell-out/choices');
+      if (!res.ok) throw new Error('Failed to load choices');
+      const data = await res.json();
+
+      // Customers
+      $fCustomer.empty().append(`<option value=""></option>`);
+      (data.customers || []).forEach(c => {
+        const label = `${c.name} (${c.code})${c.level ? ' – ' + c.level : ''}`;
+        $fCustomer.append(new Option(label, c.id, false, false));
+      });
+      $fCustomer.trigger('change');
+
+      // Brands
+      $fBrand.empty().append(`<option value=""></option>`);
+      (data.brands || []).map(b => b.name).filter(Boolean).forEach(b => {
+        $fBrand.append(new Option(b, b, false, false));
+      });
+      $fBrand.trigger('change');
+
+    } catch (e) {
+      console.error(e);
+      alert('Could not load brands/customers. Please refresh.');
+    }
+  }
+</script>
+
+
+<script>
+  // ---------- Select2 ----------
+  $(function(){ $('.select2').select2({ width: '100%', tags: true, tokenSeparators: [','] }); });
+
+  // ---------- Elements ----------
+  const filtersForm = document.getElementById('filters');
+  const tbody = document.querySelector('#grid tbody');
+  const gridWrap = document.getElementById('gridWrap');
+
+  const kpiRows = document.getElementById('kpi-rows');
+  const kpiSOH  = document.getElementById('kpi-soh');
+  const kpiAvg  = document.getElementById('kpi-avg-age');
+
+  const ft0_30 = document.getElementById('ft-0-30');
+  const ft31_60= document.getElementById('ft-31-60');
+  const ft61_90= document.getElementById('ft-61-90');
+  const ft90p  = document.getElementById('ft-90p');
+  const ftSOH  = document.getElementById('ft-soh');
+  const ftAVG  = document.getElementById('ft-avg');
+
+  const exportBtn = document.getElementById('exportBtn');
+  const resetBtn  = document.getElementById('resetBtn');
+
+  // ---------- Helpers ----------
+  function toQS(obj){
+    const params = [];
+    Object.entries(obj).forEach(([k,v])=>{
+      if (v === null || v === undefined || v === '') return;
+      params.push(`${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
+    });
+    return params.join('&');
+  }
+  function getParams(){
+    const fd = new FormData(filtersForm);
+    const so = $('.select2[name="sales_office"]').val() || [];
+    const sg = $('.select2[name="sales_group"]').val() || [];
+    const obj = Object.fromEntries(fd.entries());
+
+    // Ensure Select2 values go in:
+    obj.customer_id   = $fCustomer.val() || ''; // backend expects ID (hidden to user)
+    obj.brand         = $fBrand.val()    || '';
+    obj.article_code  = $fArticle.val()  || '';
+
+    obj.sales_office = so.join(',');
+    obj.sales_group  = sg.join(',');
+    return obj;
+  }
+  function fmtN(v){
+    if (v === null || v === undefined || v === '') return '';
+    const n = Number(v); return Number.isFinite(n) ? n.toLocaleString() : v;
+  }
+  function fmtD(v) {
+    if (!v) return '';
+    // normalize odd “GM” -> “GMT” and strip milliseconds if present
+    const cleaned = String(v).replace(/\bGM\b/, 'GMT');
+    const d = new Date(cleaned);
+    if (!isNaN(d)) {
+      return d.toLocaleDateString('en-GB', {
+        weekday: 'short', day: '2-digit', month: 'short', year: 'numeric'
+      });
+    }
+    // fallback for plain YYYY-MM-DD
+    const ymd = String(v).split('T')[0];
+    const [y, m, d2] = ymd.split('-');
+    return new Date(`${y}-${m}-${d2}T00:00:00Z`).toLocaleDateString('en-GB', {
+      weekday: 'short', day: '2-digit', month: 'short', year: 'numeric'
+    });
+  }
+  function fmtMoney(v){
+    const n = Number(v);
+    return Number.isFinite(n) ? n.toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}) : '';
+  }
+
+  function refreshArticleChoices(rows){
+    const seen = new Set();
+    const articles = [];
+    for (const r of rows || []){
+      const ac = (r.ArticleCode || '').trim();
+      if (ac && !seen.has(ac)){
+        seen.add(ac); articles.push(ac);
+      }
+    }
+    // preserve current selection if still present
+    const current = $fArticle.val();
+    $fArticle.empty().append(`<option value=""></option>`);
+    articles.sort().forEach(ac => $fArticle.append(new Option(ac, ac, false, false)));
+    $fArticle.val(seen.has(current) ? current : '').trigger('change');
+  }
+
+  async function loadData(){
+    try{
+      gridWrap.classList.add('loading');
+      tbody.innerHTML = '';
+      kpiRows.textContent = '0'; kpiSOH.textContent = '0'; kpiAvg.textContent = '—';
+      ft0_30.textContent = '0'; ft31_60.textContent = '0';
+      ft61_90.textContent = '0'; ft90p.textContent = '0';
+      ftSOH.textContent = '0'; ftAVG.textContent = '—';
+
+      const params = getParams();
+      const qs = toQS(params);
+      exportBtn.href = `/fifo_aging/export.csv?${qs}`;
+
+      const res = await fetch(`/fifo_aging/data?${qs}`);
+      const rows = await res.json();
+
+      // client-side sorts
+      if (params.sort === 'age_desc'){
+        rows.sort((a,b)=> (b.avg_age_days || 0) - (a.avg_age_days || 0));
+      } else if (params.sort === 'soh_desc'){
+        rows.sort((a,b)=> (b.soh_qty || 0) - (a.soh_qty || 0));
+      } else if (params.sort === 'oldest_first'){
+        rows.sort((a,b)=> new Date(a.oldest_lot_date||'2999-12-31') - new Date(b.oldest_lot_date||'2999-12-31'));
+      }
+
+      allRows = rows;
+      currentPage = 1;
+
+      // Refresh Article select from loaded data
+      refreshArticleChoices(rows);
+
+      // Render current page
+      renderPage();
+
+    } catch(e){
+      console.error(e);
+      alert('Failed to load aging data.');
+    } finally {
+      gridWrap.classList.remove('loading');
+    }
+  }
+  
+    // When brand or customer changes, clear Article (since its domain changes)
+    $fCustomer.on('change', ()=> { $fArticle.val(null).trigger('change'); });
+    $fBrand.on('change',    ()=> { $fArticle.val(null).trigger('change'); });
+  
+    // Reset
+    document.getElementById('resetBtn').addEventListener('click', () => {
+      filtersForm.reset();
+      $fCustomer.val(null).trigger('change');
+      $fBrand.val(null).trigger('change');
+      $fArticle.val(null).trigger('change');
+      $('.select2[name="sales_office"]').val(null).trigger('change');
+      $('.select2[name="sales_group"]').val(null).trigger('change');
+      loadData();
+    });
+  
+    // Boot
+    loadChoices().then(loadData);
+    filtersForm.addEventListener('submit', e => { e.preventDefault(); loadData(); });
+
+  // Very light green->red per row (low→high)
+  function bucketBg(val, rowMax){
+    const v = Number(val || 0);
+    const max = Math.max(Number(rowMax || 0), 1);
+    const ratio = Math.max(0, Math.min(1, v / max)); // 0..1
+    const hue = 120 - 120 * ratio;                   // 120 (green) -> 0 (red)
+    const alpha = 0.18;                               // very light
+    return `background-color: hsla(${hue}, 80%, 85%, ${alpha});`;
+  }
+
+  function applyTooltips(){
+    // Enable Bootstrap tooltips for any element with data-bs-toggle="tooltip"
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.forEach(el=>{ new bootstrap.Tooltip(el); });
+  }
+
+  // ---------- Data loading ----------
+  // Pagination state
+  let allRows = [];
+  let currentPage = 1;
+
+  const pageSizeSel = document.getElementById('pageSize');
+  const prevBtn     = document.getElementById('prevPage');
+  const nextBtn     = document.getElementById('nextPage');
+  const pageInfoEl  = document.getElementById('pageInfo');
+
+  function getPageSize(){ return parseInt(pageSizeSel.value || '50', 10); }
+
+  function renderPage() {
+    const ps = getPageSize();
+    const total = allRows.length;
+    const totalPages = Math.max(1, Math.ceil(total / ps));
+    if (currentPage > totalPages) currentPage = totalPages;
+
+    const start = (currentPage - 1) * ps;
+    const end   = Math.min(start + ps, total);
+    const slice = allRows.slice(start, end);
+
+    // rebuild tbody from slice (reuse your existing row render)
+    const tbody = document.querySelector('#grid tbody');
+    tbody.innerHTML = '';
+    let sumSOH=0, sum0_30=0, sum31_60=0, sum61_90=0, sum90p=0, wSum=0;
+
+    for (const r of slice){
+      const maxBucket = Math.max(Number(r.b_0_30||0), Number(r.b_31_60||0), Number(r.b_61_90||0), Number(r.b_90p||0), 0);
+      const tr = document.createElement('tr');
+      tr.classList.add('cursor-pointer');
+      tr.dataset.customerId = r.CustomerID;
+      tr.dataset.skuId = r.SKU_ID;
+
+      tr.innerHTML = `
+        <td class="wide">${r.CustName ?? r.CustomerID ?? ''}</td>
+        <td class="mid">${r.Brand ?? ''}</td>
+        <td class="mid">${r.ArticleCode ?? ''}</td>
+        <td class="wide">${r.Description ?? ''}</td>
+
+        <td class="num bucket-cell" style="${bucketBg(r.b_0_30, maxBucket)}">${fmtN(r.b_0_30)}</td>
+        <td class="num bucket-cell" style="${bucketBg(r.b_31_60, maxBucket)}">${fmtN(r.b_31_60)}</td>
+        <td class="num bucket-cell" style="${bucketBg(r.b_61_90, maxBucket)}">${fmtN(r.b_61_90)}</td>
+        <td class="num bucket-cell" style="${bucketBg(r.b_90p, maxBucket)}">${fmtN(r.b_90p)}</td>
+
+        <td class="num">${fmtN(r.soh_qty)}</td>
+        <td class="num">${r.avg_age_days ?? ''}</td>
+        <td class="mid">${fmtD(r.oldest_lot_date)}</td>
+        <td class="mid">${fmtD(r.newest_lot_date)}</td>
+        <td class="num">${fmtN(r.total_receipts)}</td>
+        <td class="num">${fmtN(r.total_issues)}</td>
+        <td class="mid">${fmtD(r.last_sellout_date)}</td>
+        <td class="mid">${fmtD(r.last_movement_date)}</td>
+
+        <td class="price" ${r.price_note ? `data-bs-toggle="tooltip" title="${r.price_note}"` : ''}>${fmtMoney(r.avg_price)}</td>
+        <td class="price">${fmtMoney(r.price_high)}</td>
+        <td class="price">${fmtMoney(r.price_low)}</td>
+        <td class="price">${fmtMoney(r.last_price)}</td>
+      `;
+
+      tr.addEventListener('click', ()=> openDetail(r.CustomerID, r.SKU_ID, getParams()));
+      tbody.appendChild(tr);
+
+      // totals (page-level)
+      sum0_30 += Number(r.b_0_30 || 0);
+      sum31_60+= Number(r.b_31_60 || 0);
+      sum61_90+= Number(r.b_61_90 || 0);
+      sum90p  += Number(r.b_90p || 0);
+      sumSOH  += Number(r.soh_qty || 0);
+      if (r.avg_age_days && r.soh_qty){ wSum += Number(r.avg_age_days) * Number(r.soh_qty); }
+    }
+
+    // Update KPIs/footers for the **page slice**
+    kpiRows.textContent = slice.length.toLocaleString();
+    kpiSOH.textContent  = sumSOH.toLocaleString();
+    ft0_30.textContent  = sum0_30.toLocaleString();
+    ft31_60.textContent = sum31_60.toLocaleString();
+    ft61_90.textContent = sum61_90.toLocaleString();
+    ft90p.textContent   = sum90p.toLocaleString();
+    ftSOH.textContent   = sumSOH.toLocaleString();
+    const avgWeighted = sumSOH > 0 ? Math.round((wSum / sumSOH) * 100) / 100 : null;
+    const avgTxt = avgWeighted == null ? '—' : avgWeighted.toLocaleString();
+    kpiAvg.textContent = avgTxt;
+    ftAVG.textContent  = avgTxt;
+
+    pageInfoEl.textContent = `Page ${currentPage} of ${totalPages}`;
+    prevBtn.disabled = currentPage <= 1;
+    nextBtn.disabled = currentPage >= totalPages;
+
+    applyTooltips();
+  }
+
+  prevBtn.addEventListener('click', ()=>{ if (currentPage > 1){ currentPage--; renderPage(); } });
+  nextBtn.addEventListener('click', ()=>{ currentPage++; renderPage(); });
+  pageSizeSel.addEventListener('change', ()=>{ currentPage = 1; renderPage(); });
+  
+  async function openDetail(customerId, skuId, baseParams){
+    const modalEl = document.getElementById('detailModal');
+    const bodyEl = document.getElementById('detailBody');
+    bodyEl.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-3">
+      <div class="spinner-border spinner-border-sm me-2"></div>Loading…
+    </td></tr>`;
+
+    const params = { ...baseParams, customer_id: customerId, sku_id: skuId };
+    const qs = toQS(params);
+
+    try{
+      const res = await fetch(`/fifo_aging/detail?${qs}`);
+      const layers = await res.json();
+      bodyEl.innerHTML = '';
+      if (!layers.length){
+        bodyEl.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-3">No lot-level layers.</td></tr>`;
+      } else {
+        for (const l of layers){
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${l.ArticleCode ?? ''}</td>
+            <td>${l.Description ?? ''}</td>
+            <td>${l.Brand ?? ''}</td>
+            <td>${fmtD(l.lot_date)}</td>
+            <td class="text-end">${fmtN(l.remaining_qty)}</td>
+            <td class="text-end">${fmtN(l.age_days)}</td>
+          `;
+          bodyEl.appendChild(tr);
+        }
+      }
+      new bootstrap.Modal(modalEl).show();
+    } catch(e){
+      console.error(e);
+      alert('Failed to load lot-level detail.');
+    }
+  }
+
+  filtersForm.addEventListener('submit', e => { e.preventDefault(); loadData(); });
+  document.getElementById('resetBtn').addEventListener('click', () => {
+    filtersForm.reset();
+    $('.select2').val(null).trigger('change');
+    loadData();
+  });
+
+  // Initial
+  loadData();
+</script>
+{% endblock %}
+</body>
+</html>

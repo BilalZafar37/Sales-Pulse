@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SALESPULSE</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+  <link rel="stylesheet" href="./static/css/sidebar.css">
+  <script type="text/javascript" src="./static/js/app.js" defer></script>
+  <link rel="icon" href="./static/img/favicon.ico">
+  <!-- Select2 CSS -->
+  <link
+    href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css"
+    rel="stylesheet"
+  />
+  <style>
+    .footer {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        background-color: #8672FF;
+        color: white;
+        text-align: left;
+        padding: 10px 20px;
+        font-family: Arial, sans-serif;
+        font-size: 16px;
+        box-shadow: 0 -2px 10px #8672FF;
+        z-index: 1000;
+    }
+    
+  </style>
+
+  </head>
+
+<body>
+  <div class="d-flex">
+    {% include 'sidebar.html' %}
+     <div class="flex-grow-1 d-flex flex-column">
+      <main>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            {% for category, msg in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show">
+                {{ msg }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
+        <div class="container-fluid py-3">
+        
+          <div class="d-flex align-items-center mb-3">
+            <h4 class="mb-0 me-3">Sell-Out Approvals</h4>
+            <span id="summaryBadge" class="badge bg-secondary d-none"></span>
+            <div class="ms-auto">
+              <button id="btnApprove" class="btn btn-success me-2" disabled>
+                Approve Selected
+              </button>
+              <button id="btnReject" class="btn btn-outline-danger" disabled>
+                Reject Selected
+              </button>
+            </div>
+          </div>
+        
+          <!-- Filters -->
+          <div class="card mb-3">
+            <div class="card-body">
+              <form id="filterForm" class="row g-3">
+                <div class="col-md-3">
+                  <label class="form-label">Brand</label>
+                  <select id="filterBrand" class="form-select"></select>
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label">Customer</label>
+                  <select id="filterCustomer" class="form-select"></select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label">Status</label>
+                  <select id="filterStatus" class="form-select">
+                    <option value="">All</option>
+                    <option>Draft</option>
+                    <option>Rejected</option>
+                    <option>Posted</option>
+                    <!-- <option>Posting</option> just for visibility -->
+                  </select>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label">Created From</label>
+                  <input id="filterFrom" type="date" class="form-control" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label">Created To</label>
+                  <input id="filterTo" type="date" class="form-control" />
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label">Search</label>
+                  <input id="filterQ" type="search" class="form-control" placeholder="Uploader or file name…" />
+                </div>
+                <div class="col-md-9 d-flex align-items-end justify-content-end">
+                  <button type="button" id="btnReset" class="btn btn-outline-secondary me-2">Reset</button>
+                  <button type="button" id="btnRefresh" class="btn btn-primary">Refresh</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        
+          <!-- Alerts -->
+          <div id="alerts"></div>
+        
+          <!-- Table -->
+          <div class="card">
+            <div class="table-responsive">
+              <table class="table align-middle mb-0">
+                <thead class="table-light position-sticky top-0">
+                  <tr>
+                    <th style="width:36px">
+                      <input class="form-check-input" type="checkbox" id="checkAll" />
+                    </th>
+                    <th>Upload #</th>
+                    <th>Status</th>
+                    <th>Brand</th>
+                    <th>Customer</th>
+                    <th>Level</th>
+                    <th>Upload Type</th>
+                    <th>Period</th>
+                    <th>Rows</th>
+                    <th>SKUs</th>
+                    <th>Total Qty</th>
+                    <th>Uploaded By</th>
+                    <th>Uploaded At</th>
+                    <th>Approved By</th>
+                    <th>Approved At</th>
+                    <th>Attachments</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="tbodyUploads">
+                  <tr><td colspan="16" class="text-center py-4 text-muted">No data.</td></tr>
+                </tbody>
+              </table>
+            </div>
+        
+            <!-- Pagination -->
+            <div class="card-footer d-flex align-items-center justify-content-between">
+              <div><small id="pageInfo" class="text-muted"></small></div>
+              <nav>
+                <ul class="pagination mb-0" id="pager"></ul>
+              </nav>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Detail Modal -->
+        <div class="modal fade" id="detailModal" tabindex="-1" aria-hidden="true">
+          <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title">Upload <span id="dUploadId"></span></h5>
+                <button class="btn-close" data-bs-dismiss="modal"></button>
+              </div>
+              <div class="modal-body">
+                <div id="detailBody"></div>
+              </div>
+              <div class="modal-footer">
+                <button class="btn btn-success" id="dApprove">Approve</button>
+                <button class="btn btn-outline-danger" id="dReject">Reject</button>
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+
+        <footer class="footer">
+          Modern Electronics ™
+        </footer>
+      </main>
+    </div>
+  </div>
+</body>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.min.js" integrity="sha384-0pUGZvbkm6XF6gxjEnlmuGrJXVbNuzT9qBBavbLwCsOGabYfZo0T0to5eqruptLy" crossorigin="anonymous"></script>
+<!-- jQuery (for Select2 and simpler DOM ops) -->
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<!-- Select2 JS -->
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+<script>
+    (() => {
+      // ===== configurable endpoints (change if yours differ) =====
+      const EP = {
+        choices: '/sell-out-approvals/choices',
+        list:    '/sell-out-approvals/uploads',
+        detail:  id => `/sell-out-approvals/approvals/${id}`,
+        approve: '/sell-out-approvals/approvals/approve',
+        reject:  '/sell-out-approvals/approvals/reject'
+      };
+      const userid = JSON.parse("{{ session['user_id']|tojson|safe}}")
+      // ===== helpers =====
+      const $alerts = $('#alerts');
+      const $tbody  = $('#tbodyUploads');
+      const $pageInfo = $('#pageInfo');
+      const $pager  = $('#pager');
+      const $summaryBadge = $('#summaryBadge');
+    
+      function alertHTML(type, msg) {
+        return `<div class="alert alert-${type} alert-dismissible fade show" role="alert">
+          ${msg}
+          <button class="btn-close" data-bs-dismiss="alert"></button>
+        </div>`;
+      }
+      function showAlert(type, msg) { $alerts.html(alertHTML(type, msg)); }
+      function badgeForStatus(s) {
+        const map = { Draft: 'secondary', PendingApproval: 'warning', Rejected: 'danger', Posted: 'success', Posting: 'info' };
+        const cls = map[s] || 'secondary';
+        return `<span class="badge bg-${cls}">${s}</span>`;
+      }
+      function fmt(x) { return x ?? ''; }
+      function fmtQty(x) { return (x==null) ? '' : Number(x).toLocaleString(); }
+      function fmtPeriod(p) { return (p && p.length===2) ? `${p[0]||''} → ${p[1]||''}` : ''; }
+      function htmlAttachments(list) {
+        if (!list || !list.length) return '<span class="text-muted">—</span>';
+        return list.slice(0, 3).map(a =>
+          `<a href="${a.Url}" class="link-primary" target="_blank" title="${a.OriginalName}">
+             📎 ${a.OriginalName}
+           </a>`
+        ).join('<br/>');
+      }
+    
+      // ===== filters =====
+      const $brand = $('#filterBrand');
+      const $cust  = $('#filterCustomer');
+      const $status= $('#filterStatus');
+      const $from  = $('#filterFrom');
+      const $to    = $('#filterTo');
+      const $q     = $('#filterQ');
+    
+      async function loadChoices() {
+        const res = await fetch(EP.choices);
+        if (!res.ok) throw new Error('choices failed');
+        const data = await res.json();
+        // brand
+        $brand.empty().append(`<option value="">All</option>`);
+        (data.brands || []).forEach(b => $brand.append(`<option>${b.name}</option>`));
+        // customer
+        $cust.empty().append(`<option value="">All</option>`);
+        (data.customers || []).forEach(c => {
+          const label = `${c.name} (${c.code})${c.level ? ' – ' + c.level : ''}`;
+          $cust.append(`<option value="${c.id}">${label}</option>`);
+        });
+        // Select2 (optional)
+        $brand.select2({ theme: 'bootstrap-5', width: '100%', placeholder: 'All brands', allowClear: true });
+        $cust.select2({ theme: 'bootstrap-5', width: '100%', placeholder: 'All customers', allowClear: true });
+      }
+    
+      // ===== table loading & pagination =====
+      let page = 1, pageSize = 20, total = 0, items = [];
+    
+      async function loadTable() {
+        const params = new URLSearchParams();
+        params.set('page', page);
+        params.set('page_size', pageSize);
+        if ($status.val())   params.set('status', $status.val());
+        if ($brand.val())    params.set('brand', $brand.val());
+        if ($cust.val())     params.set('customer_id', $cust.val());
+        if ($from.val())     params.set('date_from', $from.val());
+        if ($to.val())       params.set('date_to', $to.val());
+        if ($q.val())        params.set('q', $q.val());
+    
+        $tbody.html(`<tr><td colspan="16" class="text-center py-4">
+          <div class="spinner-border" role="status"></div>
+        </td></tr>`);
+    
+        const res = await fetch(`${EP.list}?` + params.toString());
+        if (!res.ok) {
+          $tbody.html(`<tr><td colspan="16" class="text-center py-4 text-danger">Failed to load uploads</td></tr>`);
+          return;
+        }
+        const json = await res.json();
+        items = json.items || [];
+        total = json.total || 0;
+        renderTable(items);
+        renderPager(page, pageSize, total);
+        $pageInfo.text(`Showing ${items.length ? ( (page-1)*pageSize + 1 ) : 0}–${(page-1)*pageSize + items.length} of ${total}`);
+        $summaryBadge.toggleClass('d-none', false).text(`${total} uploads`);
+        updateBulkButtons();
+      }
+    
+      function renderTable(list) {
+        if (!list.length) {
+          $tbody.html(`<tr><td colspan="16" class="text-center py-4 text-muted">No uploads found.</td></tr>`);
+          return;
+        }
+        $tbody.html(list.map(row => {
+          const c = row.Customer || {};
+          const canAct = row.Status === 'Draft'; // only Draft is actionable
+          const chkHtml = `<input type="checkbox" class="row-check form-check-input" ${canAct ? '' : 'disabled'} />`;
+
+          return `<tr data-id="${row.UploadID}">
+            <td>${chkHtml}</td>
+            <td>#${row.UploadID}</td>
+            <td>
+              ${badgeForStatus(row.Status)}
+              ${row.HasPotentialNegatives ? '<span class="badge bg-danger ms-1">⚠ potential negative</span>' : ''}
+            </td>
+            <td>${fmt(row.Brand)}</td>
+            <td>${fmt(c.name)} <small class="text-muted">(${fmt(c.code)})</small></td>
+            <td>${fmt(row.LevelType)}</td>
+            <td>${fmt(row.UploadType)}</td>
+            <td>${fmtPeriod(row.Period)}</td>
+            <td>${fmt(row.RowCount)}</td>
+            <td>${fmt(row.DistinctSKU)}</td>
+            <td>${fmtQty(row.TotalSellOutQty)}</td>
+            <td>${fmt(row.CreatedBy) || '—'}</td>
+            <td><small class="text-muted">${fmt(row.CreatedAtLocal) || '—'}</small></td>
+            <td>${fmt(row.ApprovedBy) || '—'}</td>
+            <td><small class="text-muted">${fmt(row.ApprovedAtLocal) || '—'}</small></td>
+            <td>${htmlAttachments(row.Attachments)}</td>
+            <td class="text-end">
+              <button class="btn btn-sm btn-outline-primary btn-view">View</button>
+            </td>
+          </tr>`;
+        }).join(''));
+      }
+    
+      function renderPager(p, ps, tot) {
+        const pages = Math.max(1, Math.ceil(tot / ps));
+        let html = '';
+        function li(disabled, active, label, target) {
+          return `<li class="page-item ${disabled ? 'disabled' : ''} ${active ? 'active' : ''}">
+            <a class="page-link" href="#" data-target="${target}">${label}</a>
+          </li>`;
+        }
+        html += li(p<=1, false, '&laquo;', Math.max(1, p-1));
+        for (let i = Math.max(1, p-2); i <= Math.min(pages, p+2); i++) {
+          html += li(false, i===p, i, i);
+        }
+        html += li(p>=pages, false, '&raquo;', Math.min(pages, p+1));
+        $pager.html(html);
+      }
+    
+      // ===== selection & bulk actions =====
+      function selectedIds() {
+        const ids = [];
+        $tbody.find('tr').each(function() {
+          const $tr = $(this);
+          const id = $tr.data('id');
+          const checked = $tr.find('.row-check').is(':checked');
+          if (checked && id) ids.push(id);
+        });
+        return ids;
+      }
+      function updateBulkButtons() {
+        const ids = selectedIds();
+        const hasSel = ids.length > 0;
+        $('#btnApprove, #btnReject').prop('disabled', !hasSel);
+        $('#checkAll').prop('checked', hasSel && ids.length === $tbody.find('.row-check').length);
+      }
+    
+      // ===== detail modal =====
+      const detailModal = new bootstrap.Modal('#detailModal');
+      
+      async function openDetail(id) {
+        $('#dUploadId').text(`#${id}`);
+        $('#detailBody').html('<div class="text-center py-4"><div class="spinner-border"></div></div>');
+      
+        const res = await fetch(EP.detail(id));
+        if (!res.ok) { $('#detailBody').html('<div class="text-danger">Failed to load.</div>'); return; }
+      
+        const { header, details, warnings } = await res.json();
+        const item = header || {};
+
+        const canAct = item.Status === 'Draft';
+        $('#dApprove, #dReject').toggle(canAct); // hide buttons for Posted/Rejected/Posting
+
+        const warnMap = {};
+        (warnings || []).forEach(w => warnMap[w.RowNumber] = w);
+      
+        const hasNeg = !!item.HasPotentialNegatives;
+      
+        // Simple header boxes (kept like your current modal)
+        const headerHtml = `
+          <div class="row g-3 mb-3">
+            <div class="col-md-4">
+              <div class="card h-100"><div class="card-body">
+                <h6 class="text-uppercase text-muted">Header</h6>
+                <div><strong>Status:</strong> ${item.Status}</div>
+                <div><strong>Brand:</strong> ${item.Brand || ''}</div>
+                <div><strong>CustomerID:</strong> ${item.CustomerID}</div>
+                <div><strong>Period:</strong> ${(item.Period||[]).join(' → ')}</div>
+                <div><strong>Created:</strong> ${item.CreatedBy || '—'} <small class="text-muted">${item.CreatedAt}</small></div>
+                ${hasNeg ? '<div class="mt-2"><span class="badge bg-danger">⚠ Potential negatives detected</span></div>' : ''}
+              </div></div>
+            </div>
+            <div class="col-md-4">
+              <div class="card h-100"><div class="card-body">
+                <h6 class="text-uppercase text-muted">Posting</h6>
+                <div><strong>Approved By:</strong> ${item.ApprovedBy || '—'}</div>
+                <div><strong>Approved At:</strong> ${item.ApprovedAt || '—'}</div>
+              </div></div>
+            </div>
+            <div class="col-md-4">
+              <div class="card h-100"><div class="card-body">
+                <h6 class="text-uppercase text-muted">Flags</h6>
+                <div>${hasNeg ? 'At least one line may go negative.' : 'No potential negatives.'}</div>
+              </div></div>
+            </div>
+          </div>
+        `;
+      
+        // Collapsible lines section
+        const linesHtml = `
+          <div class="accordion" id="accLines">
+            <div class="accordion-item">
+              <h2 class="accordion-header" id="headingLines">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseLines">
+                  Lines (${(details||[]).length})
+                </button>
+              </h2>
+              <div id="collapseLines" class="accordion-collapse collapse" data-bs-parent="#accLines">
+                <div class="accordion-body">
+                  <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                      <thead class="table-light">
+                        <tr>
+                          <th>#</th>
+                          <th>MEC SKU</th>
+                          <th>CustSKU</th>
+                          <th>Date</th>
+                          <th class="text-end">SellOutQty</th>
+                          <th class="text-end">Avail. Before</th>
+                          <th class="text-end">Cum. In Upload</th>
+                          <th class="text-end">Resulting Bal</th>
+                          <th>Flag</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${(details||[]).map(d => {
+                          const w = warnMap[d.RowNumber] || {};
+                          const isNeg = !!w.IsNegative;
+                          const trClass = isNeg ? 'table-danger' : '';
+                          return `
+                            <tr class="${trClass}">
+                              <td>${d.RowNumber}</td>
+                              <td>${d.ArticleCode}</td>
+                              <td>${d.CustSKUCode || ''}</td>
+                              <td>${d.DocumentDate}</td>
+                              <td class="text-end">${Number(d.SellOutQty||0).toLocaleString()}</td>
+                              <td class="text-end">${w.AvailableBefore!=null ? Number(w.AvailableBefore).toLocaleString() : ''}</td>
+                              <td class="text-end">${w.CumulativeFromUpload!=null ? Number(w.CumulativeFromUpload).toLocaleString() : ''}</td>
+                              <td class="text-end">${w.ResultingBalance!=null ? Number(w.ResultingBalance).toLocaleString() : ''}</td>
+                              <td>${isNeg ? '<span class="badge bg-danger">NEG</span>' : ''}</td>
+                            </tr>
+                          `;
+                        }).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      
+        $('#detailBody').html(headerHtml + linesHtml);
+      
+        // actions wired as before
+        $('#dApprove').off('click').on('click', () => bulkAction('approve', [id]));
+        $('#dReject').off('click').on('click', () => bulkAction('reject', [id]));
+        detailModal.show();
+      }
+
+      // ===== actions =====
+      async function bulkAction(action, ids) {
+        const url = (action === 'approve') ? EP.approve : EP.reject;
+        const body = JSON.stringify({ ids, actor: userid || 'approver' });
+        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || json.ok === false) {
+          showAlert('danger', `Action failed: ${fmt(json.error) || res.statusText}`);
+          return;
+        }
+    
+        // show server feedback (including negative SOH messages in failed[])
+        const failed = json.failed || [];
+        const skipped = json.skipped || [];
+        const posted = json.posted || json.rejected || [];
+    
+        if (posted.length) showAlert('success', `${action === 'approve' ? 'Approved' : 'Rejected'}: ${posted.join(', ')}`);
+        if (skipped.length) showAlert('warning', `Skipped: ${skipped.map(s => `#${s.UploadID}(${s.Status})`).join(', ')}`);
+        if (failed.length)  showAlert('danger', `Failed: ${failed.map(f => `#${f.UploadID}: ${f.error}`).join('; ')}`);
+    
+        // refresh table + modal title/state
+        await loadTable();
+        try { detailModal.hide(); } catch(e) {}
+      }
+    
+      // ===== events =====
+      $('#btnRefresh').on('click', () => { page = 1; loadTable(); });
+      $('#btnReset').on('click', () => { $brand.val('').trigger('change'); $cust.val('').trigger('change'); $status.val(''); $from.val(''); $to.val(''); $q.val(''); page=1; loadTable(); });
+      $pager.on('click', 'a.page-link', (e) => { e.preventDefault(); const t = Number($(e.currentTarget).data('target')); if (t && t !== page) { page = t; loadTable(); }});
+      $('#checkAll').on('change', function(){ const checked = $(this).is(':checked'); $('.row-check').prop('checked', checked); updateBulkButtons(); });
+      $tbody.on('change', '.row-check', updateBulkButtons);
+      $('#btnApprove').on('click', () => { const ids = selectedIds(); if (ids.length) bulkAction('approve', ids); });
+      $('#btnReject').on('click', () => { const ids = selectedIds(); if (ids.length) bulkAction('reject', ids); });
+      $tbody.on('click', '.btn-view', function(){ const id = $(this).closest('tr').data('id'); openDetail(id); });
+    
+      // ===== init =====
+      (async function init(){
+        try {
+          await loadChoices();
+          await loadTable();
+        } catch (e) {
+          showAlert('danger', 'Failed to initialize approvals page.');
+          console.error(e);
+        }
+      })();
+    })();
+    
+</script>
+</html>

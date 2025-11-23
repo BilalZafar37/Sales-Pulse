@@ -1,0 +1,552 @@
+{% extends 'base.html' %}
+
+{% block styles %}
+  .select2-container { width: 100% !important; }
+  .select2-dropdown { z-index: 2000; } /* above dropdown */
+  /* Row hover emphasis */
+  #grid tbody tr:hover { outline: 2px solid rgba(111,66,193,.35); outline-offset: -2px; cursor: pointer; }
+  /* Sort indicators */
+  th.sortable { position: relative; user-select:none; }
+  th.sortable .sort-caret { position:absolute; right:.5rem; opacity:.4; }
+  th.sortable.sorted-asc .sort-caret::after { content:"▲"; }
+  th.sortable.sorted-desc .sort-caret::after { content:"▼"; }
+  /* Skeleton loader */
+  .skeleton td { position: relative; }
+  .skeleton td::after { content:""; display:block; height:0.8em; width:80%; background:linear-gradient(90deg,#eee,#f5f5f5,#eee); border-radius:4px; animation: shimmer 1.2s infinite; }
+  @keyframes shimmer { 0%{background-position:-200px 0} 100%{background-position:200px 0} }
+  .riyal-icon svg {
+    width: 22px;
+    height: 22px;
+    fill: #555;           /* Change to #6f42c1 or green if preferred */
+    vertical-align: middle;
+    margin-right: 3px;
+  }
+  #grid td.num { text-align:right; font-variant-numeric: tabular-nums; }
+{% endblock %}
+
+{% block content %}
+<div class="content-with-sidebar wrapper">
+
+  <div class="card shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items-center" style="background:#6f42c1;color:#fff;">
+      <h5 class="mb-0">Sell-In + Returns Captures</h5>
+
+      <div class="d-flex flex-wrap gap-2 align-items-center">
+        <!-- Quick search -->
+        <div class="input-group input-group-sm" style="width:260px;">
+          <span class="input-group-text">Search</span>
+          <input id="quick-search" type="text" class="form-control" placeholder="All Data(↵ enter to apply)">
+          <button id="quick-clear" class="btn btn-outline-light">✕</button>
+        </div>
+
+        <!-- Page size -->
+        <div class="input-group input-group-sm" style="width:160px;">
+          <span class="input-group-text">Per page</span>
+          <select id="page-size" class="form-select">
+            <option>25</option><option selected>50</option><option>100</option><option>200</option>
+          </select>
+        </div>
+
+        <!-- Columns toggle -->
+        <div class="dropdown">
+          <button class="btn btn-light btn-sm dropdown-toggle" data-bs-toggle="dropdown">Columns</button>
+          <div class="dropdown-menu dropdown-menu-end p-2" style="min-width:260px;">
+            <div id="col-toggles" class="d-flex flex-column gap-1"></div>
+            <hr class="my-2">
+            <button id="save-prefs" class="btn btn-primary btn-sm w-100">Save View</button>
+          </div>
+        </div>
+
+        <!-- Filters toggle -->
+        <div class="dropdown">
+          <button class="btn btn-light btn-sm dropdown-toggle" data-bs-toggle="dropdown">Filters</button>
+          <div id="filters-menu" class="dropdown-menu dropdown-menu-end p-3" style="min-width:460px; max-height:70vh; overflow:auto;">
+            <div id="filters-form" class="row g-2"></div>
+            <div class="d-flex gap-2 mt-2">
+              <button id="apply-filters" class="btn btn-primary btn-sm">Apply</button>
+              <button id="reset-filters" class="btn btn-outline-secondary btn-sm">Reset</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Export -->
+        <div class="btn-group">
+          <button id="export-current" class="btn btn-outline-light btn-sm">Export current view</button>
+          <button class="btn btn-outline-light btn-sm dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown"></button>
+          <div class="dropdown-menu dropdown-menu-end p-2">
+            <button id="export-all" class="btn btn-warning btn-sm w-100">Export all (filters applied)</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-body">
+      <!-- Hidden Riyal symbol definition -->
+      <svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+        <symbol id="icon-riyal" viewBox="0 0 2000 2000">
+          <path d="M1085.73,895.8c20.06-44.47,33.32-92.75,38.4-143.37l-330.68,70.33v-135.2l292.27-62.11
+                   c20.06-44.47,33.32-92.75,38.4-143.37l-330.68,70.27V66.13c-50.67,28.45-95.67,66.32-132.25,110.99v403.35l-132.25,28.11V0
+                   c-50.67,28.44-95.67,66.32-132.25,110.99v525.69l-295.91,62.88c-20.06,44.47-33.33,92.75-38.42,143.37l334.33-71.05v170.26
+                   l-358.3,76.14c-20.06,44.47-33.32,92.75-38.4,143.37l375.04-79.7c30.53-6.35,56.77-24.4,73.83-49.24l68.78-101.97v-.02
+                   c7.14-10.55,11.3-23.27,11.3-36.97v-149.98l132.25-28.11v270.4l424.53-90.28Z"/>
+        </symbol>
+      </svg>
+      
+      <div id="status" class="mb-2"></div>
+
+      <div class="table-responsive">
+        <table id="grid" class="table table-hover table-bordered table-sm" style="text-wrap-mode:nowrap">
+          <thead class="table-light position-sticky top-0" style="z-index:1;"><tr id="grid-head"></tr></thead>
+          <tbody id="grid-body"></tbody>
+        </table>
+      </div>
+
+      <!-- Empty state -->
+      <div id="empty-state" class="text-center text-muted py-3 d-none">No rows match your filters.</div>
+
+      <!-- Pagination toolbar -->
+      <div class="d-flex justify-content-between align-items-center mt-2 flex-wrap gap-2">
+        <div id="pager-info" class="small text-muted"></div>
+        <nav>
+          <ul class="pagination pagination-sm mb-0">
+            <li class="page-item"><button class="page-link" id="first-page">« First</button></li>
+            <li class="page-item"><button class="page-link" id="prev-page">‹ Prev</button></li>
+            <li class="page-item disabled"><span class="page-link" id="page-indicator">Page 1 / 1</span></li>
+            <li class="page-item"><button class="page-link" id="next-page">Next ›</button></li>
+            <li class="page-item"><button class="page-link" id="last-page">Last »</button></li>
+          </ul>
+        </nav>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+
+
+{% block scripts %}
+<!-- jQuery + Select2 (CSS was commented out earlier — this fixes "labels only" filters) -->
+<!-- <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/> -->
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+<script>
+(() => {
+  // ---------- Server-provided metadata & prefs ----------
+  const columnsMeta = {{ columns_meta_json|safe }};   // [{key,label,type,default_visible,filterable}]
+  const userPrefs   = {{ user_prefs_json|safe }};     // {visibleColumns:[], hiddenFilters:[], perPage:int}
+
+  // ---------- State ----------
+  let visibleColumns = new Set(userPrefs.visibleColumns?.length ? userPrefs.visibleColumns : columnsMeta.filter(c => c.default_visible !== false).map(c => c.key));
+  let hiddenFilters  = new Set(userPrefs.hiddenFilters || []);
+  let sort           = null;     // {key, dir: 'asc'|'desc'}
+  let filters        = {};
+  // pagination state (supports both cursor and page modes)
+  let page       = 1;
+  let pageSize   = userPrefs.perPage || 50;
+  let total      = 0;
+  let totalPages = 1;
+  // fallback cursor (for legacy API)
+  let offset     = 0;
+  let limit      = pageSize;
+  let hasMore    = false;
+
+  // ---------- Elements ----------
+  const $head   = $('#grid-head');
+  const $body   = $('#grid-body');
+  const $status = $('#status');
+  const $empty  = $('#empty-state');
+
+  // ---------- Helpers ----------
+  const debounce = (fn, ms=350) => { let t; return (...a)=>{clearTimeout(t); t=setTimeout(()=>fn(...a),ms)} };
+
+  // ---- Formatters ----
+  const fmt2 = new Intl.NumberFormat('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  
+  // Use SAR with Latin digits. If you want Arabic-Indic digits use 'ar-SA' instead of 'en'.
+  const fmtSAR = new Intl.NumberFormat('en', { style: 'currency', currency: 'SAR', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  
+  // Mark which columns are currency (tweak list to match your keys)
+  const currencyCols = new Set([
+    'Net', 'NetValue', 'Total', 'CredMemos', 'RetnValue', 'GrInvSls'
+  ]);
+  
+  function formatCell(colMeta, key, value) {
+    if (value == null || value === '') return '';
+    if (colMeta?.type === 'numeric') {
+      const num = fmt2.format(Number(value));
+      if (currencyCols.has(key)) {
+        // Use Riyal SVG icon before the number
+        return `${num} <span class="riyal-icon"><svg viewBox="0 0 2000 2000"><use href="#icon-riyal"/></svg></span>`;
+      }
+      return num;
+    }
+    return String(value);
+  }
+
+  
+
+  function showStatus(kind, msg) {
+    $status.html(`<div class="alert alert-${kind} py-2 mb-2">${msg}</div>`);
+    setTimeout(() => $status.empty(), 3000);
+  }
+
+  function buildHead() {
+    $head.empty();
+    columnsMeta.forEach(col => {
+      if (!visibleColumns.has(col.key)) return;
+      const th = $(`<th data-key="${col.key}" class="sortable">${col.label}<span class="sort-caret"></span></th>`);
+      if (sort && sort.key === col.key) th.addClass(sort.dir === 'asc' ? 'sorted-asc' : 'sorted-desc');
+      $head.append(th);
+    });
+  }
+
+  function appendRows(rows) {
+    const visCols = columnsMeta.filter(c => visibleColumns.has(c.key));
+    const keys    = visCols.map(c => c.key);
+    const metaMap = Object.fromEntries(visCols.map(c => [c.key, c]));
+    const frag = document.createDocumentFragment();
+  
+    rows.forEach(r => {
+      const tr = document.createElement('tr');
+      keys.forEach(k => {
+        const td = document.createElement('td');
+        const colMeta = metaMap[k];
+        td.className = (colMeta?.type === 'numeric') ? 'num' : '';
+        td.innerHTML = formatCell(colMeta, k, r[k]);
+        tr.appendChild(td);
+      });
+      frag.appendChild(tr);
+    });
+    $body[0].appendChild(frag);
+  }
+
+  function setSkeleton(n=10) {
+    $body.empty();
+    const cols = columnsMeta.filter(c => visibleColumns.has(c.key)).length;
+    for (let i=0;i<n;i++){
+      const tr = document.createElement('tr'); tr.className='skeleton';
+      for (let j=0;j<cols;j++){ tr.appendChild(document.createElement('td')); }
+      $body[0].appendChild(tr);
+    }
+  }
+
+  function updatePagerUI() {
+    const info = $('#pager-info');
+    const indicator = $('#page-indicator');
+    $('#page-size').val(String(pageSize));
+
+    if (total > 0) {
+      indicator.text(`Page ${page} / ${totalPages}`);
+      info.text(`${(page-1)*pageSize + 1}–${Math.min(page*pageSize, total)} of ${total} rows`);
+    } else if ($body.children().length === 0) {
+      indicator.text(`Page 0 / 0`);
+      info.text(`0 rows`);
+    } else {
+      // legacy cursor mode
+      indicator.text(`Page ?`);
+      info.text(`Loaded ${$body.children().length} row(s)`);
+    }
+
+    // Enable/disable nav
+    $('#first-page, #prev-page').prop('disabled', page <= 1);
+    $('#next-page, #last-page').prop('disabled', total ? (page >= totalPages) : !hasMore);
+  }
+
+  // (Re)load data - supports page or cursor depending on backend response
+  async function loadData({append=false}={}) {
+    try {
+      setSkeleton(8);
+      const payload = {
+        filters,
+        columns: Array.from(visibleColumns),
+        sort,
+        // Prefer page-based:
+        page, page_size: pageSize,
+        // Legacy cursor fallback:
+        offset: (page-1)*pageSize, limit: pageSize
+      };
+      const res = await fetch(`{{ url_for('sell_in.captures_data') }}`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || 'Load failed');
+
+      // Clear and render
+      if (!append) $body.empty();
+      appendRows(json.rows || []);
+
+      // Detect mode and update pagination
+      if (Number.isFinite(json.total) && Number.isFinite(json.page_size)) {
+        total = json.total;
+        pageSize = json.page_size;
+        totalPages = Math.max(1, Math.ceil(total / pageSize));
+        page = Math.min(json.page || page, totalPages);
+        hasMore = page < totalPages;
+      } else {
+        // legacy: use has_more/next_offset if provided
+        hasMore = !!json.has_more;
+        offset = json.next_offset ?? offset + (json.rows?.length || 0);
+        total = 0; totalPages = 1; // unknown
+      }
+
+      // Empty state
+      $empty.toggleClass('d-none', (json.rows && json.rows.length) ? true : false);
+
+      updatePagerUI();
+    } catch (e) {
+      console.error(e);
+      $body.empty(); $empty.addClass('d-none');
+      showStatus('danger', e.message);
+    }
+  }
+
+  function buildColumnToggles() {
+    const $box = $('#col-toggles').empty();
+    columnsMeta.forEach(col => {
+      const id = 'col_' + col.key;
+      $box.append(`
+        <label class="form-check form-switch">
+          <input class="form-check-input col-toggle" id="${id}" type="checkbox" data-key="${col.key}" ${visibleColumns.has(col.key) ? 'checked':''}>
+          <span class="form-check-label">${col.label}</span>
+        </label>
+      `);
+    });
+    $box.on('change', '.col-toggle', function() {
+      const key = this.dataset.key;
+      if (this.checked) visibleColumns.add(key); else visibleColumns.delete(key);
+      buildHead(); page = 1; loadData({append:false});
+    });
+  }
+
+  async function preloadDistinct(selectEl, fieldKey) {
+    try {
+      const res = await fetch(`{{ url_for('sell_in.captures_distinct') }}?field=${encodeURIComponent(fieldKey)}&q=&page=1`);
+      const json = await res.json();
+      const items = (json.items || []).slice(0, 30);
+      if (!items.length) return;
+      // append options (so they show up instantly)
+      for (const v of items) {
+        const opt = new Option(v, v, false, false);
+        selectEl.append(opt);
+      }
+      selectEl.trigger('change.select2');
+    } catch (e) {
+      console.warn('Preload distinct failed', fieldKey, e);
+    }
+  }
+
+  function buildFiltersUI() {
+    const $f = $('#filters-form').empty();
+    columnsMeta.forEach(col => {
+      if (hiddenFilters.has(col.key) || col.filterable === false) return;
+      const wrap = $(`<div class="col-md-6" data-key="${col.key}"></div>`);
+      wrap.append(`<label class="form-label">${col.label}</label>`);
+      if (col.type === 'string') {
+        const sel = $(`<select class="form-select filter-input" multiple data-type="string"></select>`);
+        wrap.append(sel);
+        // Deferred init function (safe to call multiple times)
+        function initOne($el, fieldKey) {
+          // If already initialized, destroy and re-init (handles width=0 after hidden init)
+          if ($el.hasClass('select2-hidden-accessible')) {
+            try { $el.select2('destroy'); } catch(_) {}
+          }
+          $el.select2({
+            width: '100%',
+            placeholder: 'Any',
+            dropdownParent: $('#filters-menu'),    // critical inside Bootstrap dropdowns
+            minimumInputLength: 0,                 // allow fetch on open
+            allowClear: true,
+            ajax: {
+              url: `{{ url_for('sell_in.captures_distinct') }}`,
+              delay: 200,
+              dataType: 'json',
+              data: params => ({
+                field: fieldKey,
+                q: params.term || '',
+                page: params.page || 1
+              }),
+              processResults: data => ({
+                results: (data.items || []).map(v => ({ id: v, text: v })),
+                pagination: { more: !!data.more }
+              })
+            }
+          });
+
+          // First open → kick an empty search to populate immediately
+          $el.one('select2:open', () => {
+            const $search = $('.select2-container--open .select2-search__field');
+            if ($search.length) $search.trigger('input'); // triggers AJAX with empty term
+          });
+        }
+
+        // Initialize now (in case dropdown is already open)
+        initOne(sel, col.key);
+
+        // Also re-init whenever the Filters dropdown becomes visible
+        $('#filters-menu').on('shown.bs.dropdown', () => {
+          initOne(sel, col.key);
+        });
+        
+      } else if (col.type === 'numeric') {
+        wrap.append(`
+          <div class="input-group">
+            <input type="number" step="any" class="form-control filter-input" data-type="num-min" placeholder="Min">
+            <input type="number" step="any" class="form-control filter-input" data-type="num-max" placeholder="Max">
+          </div>
+        `);
+      } else if (col.type === 'date' || col.type === 'datetime') {
+        wrap.append(`
+          <div class="input-group">
+            <input type="date" class="form-control filter-input" data-type="date-from">
+            <span class="input-group-text">to</span>
+            <input type="date" class="form-control filter-input" data-type="date-to">
+          </div>
+        `);
+      } else {
+        wrap.append(`<input class="form-control filter-input" data-type="text" placeholder="Contains…">`);
+      }
+      $f.append(wrap);
+    });
+  }
+  
+  function collectFilters() {
+    filters = {};
+    $('#filters-form > [data-key]').each(function(){
+      const key  = this.dataset.key;
+      const $ins = $(this).find('.filter-input');
+      const type = ($ins.first().data('type') || 'text');
+
+      if (type === 'string') {
+        const vals = $ins.val() || [];
+        if (vals.length) filters[key] = {op:'IN', values: vals};
+      } else if (type === 'num-min' || type === 'num-max') {
+        const min = parseFloat($(this).find('[data-type="num-min"]').val());
+        const max = parseFloat($(this).find('[data-type="num-max"]').val());
+        if (!isNaN(min) || !isNaN(max)) filters[key] = {op:'range', min: isNaN(min)?null:min, max: isNaN(max)?null:max};
+      } else if (type === 'date-from' || type === 'date-to') {
+        const from = $(this).find('[data-type="date-from"]').val();
+        const to   = $(this).find('[data-type="date-to"]').val();
+        if (from || to) filters[key] = {op:'between', from: from||null, to: to||null};
+      } else {
+        const v = $ins.val();
+        if (v) filters[key] = {op:'like', value: v};
+      }
+    });
+  }
+
+  async function savePrefs() {
+    try {
+      const payload = {
+        page_key: 'sellin_captures',
+        visible_columns: Array.from(visibleColumns),
+        hidden_filters: Array.from(hiddenFilters),
+        per_page: pageSize
+      };
+      const res = await fetch(`{{ url_for('sell_in.gridprefs_save') }}`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || 'Save failed');
+      showStatus('success','View saved');
+    } catch(e) {
+      showStatus('danger', e.message);
+    }
+  }
+
+  function exportCall(scope) {
+    const payload = {
+      filters,
+      columns: Array.from(visibleColumns),
+      scope,
+      // prefer page semantics (backend can switch):
+      page, page_size: pageSize, sort
+    };
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = `{{ url_for('sell_in.captures_export') }}`;
+    form.style.display = 'none';
+    const inp = document.createElement('input');
+    inp.name = 'payload'; inp.value = JSON.stringify(payload);
+    form.appendChild(inp);
+    document.body.appendChild(form);
+    form.submit();
+    setTimeout(() => document.body.removeChild(form), 1000);
+  }
+
+  // ---------- Events ----------
+  // Sorting on header click
+  $('#grid-head').on('click', 'th.sortable', function() {
+    const key = this.dataset.key;
+    if (!key) return;
+    if (!sort || sort.key !== key) sort = {key, dir:'asc'};
+    else sort.dir = (sort.dir === 'asc' ? 'desc' : 'asc');
+    buildHead(); page = 1; loadData({append:false});
+  });
+
+  // Filters
+  $('#apply-filters').on('click', () => { collectFilters(); page = 1; loadData({append:false}); });
+  $('#reset-filters').on('click', () => { buildFiltersUI(); page = 1; filters = {}; loadData({append:false}); });
+  $('#save-prefs').on('click', savePrefs);
+
+  // Quick search (adds to filters as LIKE over SourceFileName/CreatedBy backend-side)
+  const applyQuick = () => {
+    const q = $('#quick-search').val().trim();
+    if (q) filters.__quick = {op:'quick', value:q}; else delete filters.__quick;
+    page = 1; loadData({append:false});
+  };
+  $('#quick-search').on('keydown', e => { if (e.key === 'Enter') applyQuick(); });
+  $('#quick-search').on('input', debounce(applyQuick, 600));
+  $('#quick-clear').on('click', () => { $('#quick-search').val(''); applyQuick(); });
+
+  // Page size + pager buttons
+  $('#page-size').on('change', function(){ pageSize = parseInt(this.value,10)||50; page = 1; loadData({append:false}); });
+  $('#first-page').on('click', ()=>{ if (page>1){ page=1; loadData({append:false}); }});
+  $('#prev-page').on('click', ()=>{ if (page>1){ page--; loadData({append:false}); }});
+  $('#next-page').on('click', ()=>{ if (total ? page<totalPages : true){ page++; loadData({append:false}); }});
+  $('#last-page').on('click', ()=>{ if (total){ page=totalPages; loadData({append:false}); }});
+
+
+  // ---------- Init ----------
+  buildHead();
+  buildColumnToggles();
+  buildFiltersUI();
+
+  // Re-init every Select2 inside the menu on open (handles width calc)
+  $('body').on('shown.bs.dropdown', '.dropdown', function (e) {
+    if ($(e.target).find('#filters-menu').length) {
+      $('#filters-menu select.filter-input[data-type="string"]').each(function(){
+        const $el = $(this);
+        // same initOne as above
+        if ($el.hasClass('select2-hidden-accessible')) { try { $el.select2('destroy'); } catch(_) {} }
+        $el.select2({
+          width: '100%',
+          placeholder: 'Any',
+          dropdownParent: $('#filters-menu'),
+          minimumInputLength: 0,
+          allowClear: true,
+          ajax: {
+            url: `{{ url_for('sell_in.captures_distinct') }}`,
+            delay: 200,
+            dataType: 'json',
+            data: p => ({ field: $el.closest('[data-key]').data('key'), q: p.term || '', page: p.page || 1 }),
+            processResults: d => ({ results: (d.items||[]).map(v=>({id:v,text:v})), pagination:{more:!!d.more} })
+          }
+        }).one('select2:open', () => {
+          const $search = $('.select2-container--open .select2-search__field');
+          if ($search.length) $search.trigger('input');
+        });
+      });
+    }
+  });
+
+
+  $('#page-size').val(String(pageSize));
+  loadData({append:false});
+})();
+</script>
+{% endblock %}
+
