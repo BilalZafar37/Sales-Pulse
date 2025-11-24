@@ -16,14 +16,58 @@ from sqlalchemy.dialects import mssql
 import pyodbc
 
 
+# def db_connection():
+#     DRIVER     = "ODBC Driver 17 for SQL Server"
+#     USERNAME   = Config.USERNAME
+#     PSSWD      = Config.PSSWD
+#     SERVERNAME = Config.SERVERNAME
+#     DATABASE   = Config.DATABASE
+
+#     # Build the raw ODBC connection string
+#     odbc_str = (
+#         f"DRIVER={{{DRIVER}}};"
+#         f"SERVER={SERVERNAME};"
+#         f"DATABASE={DATABASE};"
+#         f"UID={USERNAME};"
+#         f"PWD={PSSWD};"
+#         f"MARS_Connection=Yes"
+#     )
+
+#     # URL‐encode it for embedding as odbc_connect
+#     connect_arg = urllib.parse.quote_plus(odbc_str)
+
+#     # Now create the engine using the odbc_connect parameter
+#     engine = create_engine(
+#         f"mssql+pyodbc:///?odbc_connect={connect_arg}",
+#         pool_size=30,
+#         max_overflow=10,
+#         pool_timeout=30,
+#         pool_pre_ping=True,
+#         fast_executemany=True,
+#         pool_recycle=3600
+#     )
+#     return engine
+
+import os
+
 def db_connection():
+    # e.g. "mssql" or "sqlite"
+    # set DB_BACKEND=sqlite
+    backend = getattr(Config, "DB_BACKEND", None) or os.getenv("DB_BACKEND", "mssql")
+
+    if backend == "sqlite":
+        # Simple file-based DB for designers / local dev
+        db_path = getattr(Config, "SQLITE_PATH", None) or os.getenv("SQLITE_PATH", "salespulse_dev.sqlite3")
+        engine = create_engine(f"sqlite:///{db_path}", echo=False, future=True)
+        return engine
+
+    # --- default: SQL Server (your current code) ---
     DRIVER     = "ODBC Driver 17 for SQL Server"
     USERNAME   = Config.USERNAME
     PSSWD      = Config.PSSWD
     SERVERNAME = Config.SERVERNAME
     DATABASE   = Config.DATABASE
 
-    # Build the raw ODBC connection string
     odbc_str = (
         f"DRIVER={{{DRIVER}}};"
         f"SERVER={SERVERNAME};"
@@ -33,10 +77,8 @@ def db_connection():
         f"MARS_Connection=Yes"
     )
 
-    # URL‐encode it for embedding as odbc_connect
     connect_arg = urllib.parse.quote_plus(odbc_str)
 
-    # Now create the engine using the odbc_connect parameter
     engine = create_engine(
         f"mssql+pyodbc:///?odbc_connect={connect_arg}",
         pool_size=30,
@@ -47,6 +89,7 @@ def db_connection():
         pool_recycle=3600
     )
     return engine
+
 
 engine = db_connection()
 
@@ -193,7 +236,7 @@ class SP_GlobalConfig(Base):
 
     Key       = Column(String(100), primary_key=True)      # [Key]
     Value     = Column(String(100), nullable=False)         # [Value]
-    UpdatedAt = Column(DateTime, nullable=False, server_default=text("SYSUTCDATETIME()"))
+    UpdatedAt = Column(DateTime, nullable=False, server_default=func.now())
 
 
 
@@ -201,54 +244,54 @@ class SP_CustomerStatusTag(Base):
     __tablename__ = "SP_CustomerStatusTag"
     CustomerID = Column(Integer, ForeignKey("SP_Customer.CustomerID"), primary_key=True)
     StatusID   = Column(Integer, ForeignKey("SP_Status.StatusID"), primary_key=True)
-    UpdatedAt  = Column(DateTime, nullable=False, server_default=text("SYSUTCDATETIME()"))
+    UpdatedAt  = Column(DateTime, nullable=False, server_default=func.now())
 
 
 # ------------------------------------------------------------
 # Generic user audit
 # ------------------------------------------------------------
-class SP_UserAudit(Base):
-    __tablename__ = "SP_UserAudit"
+# class SP_UserAudit(Base):
+#     __tablename__ = "SP_UserAudit"
 
-    AuditID        = Column(Integer, primary_key=True, autoincrement=True)
+#     AuditID        = Column(Integer, primary_key=True, autoincrement=True)
 
-    # WHO
-    UserID         = Column(Integer, nullable=True)
-    Username       = Column(NVARCHAR(100), nullable=True)
+#     # WHO
+#     UserID         = Column(Integer, nullable=True)
+#     Username       = Column(NVARCHAR(100), nullable=True)
 
-    # WHAT
-    TableName      = Column(String(128), nullable=False)  # SYSNAME ~ NVARCHAR(128)
-    EntityPK       = Column(NVARCHAR(200), nullable=False)
-    Action         = Column(NVARCHAR(20),  nullable=False)
+#     # WHAT
+#     TableName      = Column(String(128), nullable=False)  # SYSNAME ~ NVARCHAR(128)
+#     EntityPK       = Column(NVARCHAR(200), nullable=False)
+#     Action         = Column(NVARCHAR(20),  nullable=False)
 
-    # DETAILS
-    ColumnsChanged = Column(NVARCHAR(4000), nullable=True)
-    PreviousValue  = Column(NVARCHAR(None), nullable=True)  # NVARCHAR(MAX)
-    NewValue       = Column(NVARCHAR(None), nullable=True)  # NVARCHAR(MAX)
-    Reason         = Column(NVARCHAR(500),  nullable=True)
-    Source         = Column(NVARCHAR(20),   nullable=False, server_default=text("N'APP'"))
+#     # DETAILS
+#     ColumnsChanged = Column(NVARCHAR(4000), nullable=True)
+#     PreviousValue  = Column(NVARCHAR(None), nullable=True)  # NVARCHAR(MAX)
+#     NewValue       = Column(NVARCHAR(None), nullable=True)  # NVARCHAR(MAX)
+#     Reason         = Column(NVARCHAR(500),  nullable=True)
+#     Source         = Column(NVARCHAR(20),   nullable=False, server_default=text("N'APP'"))
 
-    # CONTEXT
-    CorrelationID  = Column(mssql.UNIQUEIDENTIFIER, nullable=False,
-                            server_default=text("NEWSEQUENTIALID()"))
-    RequestIP      = Column(String(45), nullable=True)
-    UserAgent      = Column(NVARCHAR(400), nullable=True)
-    AppVersion     = Column(NVARCHAR(50),  nullable=True)
-    Success        = Column(Boolean, nullable=False, server_default=text("1"))
-    ErrorMessage   = Column(NVARCHAR(1000), nullable=True)
+#     # CONTEXT
+#     CorrelationID  = Column(mssql.UNIQUEIDENTIFIER, nullable=False,
+#                             server_default=text("NEWSEQUENTIALID()"))
+#     RequestIP      = Column(String(45), nullable=True)
+#     UserAgent      = Column(NVARCHAR(400), nullable=True)
+#     AppVersion     = Column(NVARCHAR(50),  nullable=True)
+#     Success        = Column(Boolean, nullable=False, server_default=text("1"))
+#     ErrorMessage   = Column(NVARCHAR(1000), nullable=True)
 
-    # WHEN
-    At             = Column(DateTime, nullable=False, server_default=text("SYSUTCDATETIME()"))
+#     # WHEN
+#     At             = Column(DateTime, nullable=False, server_default=func.now())
 
-    # __table_args__ = (
-    #     # Helpful indexes (match your DDL)
-    #     Index("IX_Audit_Entity",  "TableName", "EntityPK", "At", mssql_with={"SORT_IN_TEMPDB": "OFF"}, mssql_include=[]),
-    #     Index("IX_Audit_User",    "UserID",    "At"),
-    #     Index("IX_Audit_Corr",    "CorrelationID"),
-    #     # Status quick index with INCLUDE columns
-    #     Index("IX_Audit_StatusQuick", "TableName", "Action", "At",
-    #           mssql_include=["EntityPK", "PreviousValue", "NewValue", "Source", "Username"]),
-    # )
+#     # __table_args__ = (
+#     #     # Helpful indexes (match your DDL)
+#     #     Index("IX_Audit_Entity",  "TableName", "EntityPK", "At", mssql_with={"SORT_IN_TEMPDB": "OFF"}, mssql_include=[]),
+#     #     Index("IX_Audit_User",    "UserID",    "At"),
+#     #     Index("IX_Audit_Corr",    "CorrelationID"),
+#     #     # Status quick index with INCLUDE columns
+#     #     Index("IX_Audit_StatusQuick", "TableName", "Action", "At",
+#     #           mssql_include=["EntityPK", "PreviousValue", "NewValue", "Source", "Username"]),
+#     # )
 
 
 
@@ -486,7 +529,7 @@ class SP_SellOutNegPreview(Base):
     __tablename__ = "SP_SellOutNegPreview"
     __table_args__ = (
         PrimaryKeyConstraint("UploadID", "RowNumber", name="PK_SP_SellOutNegPreview"),
-        {"schema": "dbo"},
+        # {"schema": "dbo"},
     )
 
     UploadID             = Column(Integer, ForeignKey("SP_SellOutUploads.UploadID", ondelete="CASCADE"), nullable=False)
@@ -498,7 +541,7 @@ class SP_SellOutNegPreview(Base):
     CumulativeFromUpload = Column(Numeric(18, 3))
     ResultingBalance     = Column(Numeric(18, 3))
     IsNegative           = Column(Boolean, nullable=False, default=False)
-    ComputedAt           = Column(DateTime(timezone=False), server_default=text("SYSUTCDATETIME()"), nullable=False)
+    ComputedAt           = Column(DateTime(timezone=False), server_default=func.now(), nullable=False)
 
     # Optional: relationship back to header
     # upload = relationship("SP_SellOutUploads", backref="NegPreviewLines")
@@ -561,7 +604,7 @@ class SP_CustomerUploadProfile(Base):
     DataStartRow    = Column(Integer)  # 1-based
     Notes           = Column(String(500))
 
-    CreatedAt    = Column(DateTime, server_default=text("SYSUTCDATETIME()"), nullable=False)
+    CreatedAt    = Column(DateTime, server_default=func.now(), nullable=False)
     CreatedBy    = Column(String(100), nullable=False)
     UpdatedAt    = Column(DateTime)
     UpdatedBy    = Column(String(100))
@@ -624,7 +667,7 @@ class SP_SellOut_Staging(Base):
     ErrorsJSON    = Column(Text)           # NVARCHAR(MAX)
     RowHash       = Column(LargeBinary)    # e.g., MD5/SHA-256 bytes
 
-    CreatedAt = Column(DateTime, server_default=text("SYSUTCDATETIME()"), nullable=False)
+    CreatedAt = Column(DateTime, server_default=func.now(), nullable=False)
 
     # relationships
     profile = relationship("SP_CustomerUploadProfile", back_populates="stagings")

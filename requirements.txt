@@ -1,0 +1,9 @@
+flask
+pandas
+sqlalchemy
+flask_login
+werkzeug
+openpyxl
+pyodbc
+apscheduler
+# dateutil
