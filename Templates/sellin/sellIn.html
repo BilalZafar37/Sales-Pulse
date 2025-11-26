@@ -1,12 +1,13 @@
 {% extends 'base.html' %}
 
 {% block styles %}
+body {background-color:#1f1c2e; font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color:white; }
   .select2-container { width: 100% !important; }
   .select2-dropdown { z-index: 2000; } /* above dropdown */
   /* Row hover emphasis */
   #grid tbody tr:hover { outline: 2px solid rgba(111,66,193,.35); outline-offset: -2px; cursor: pointer; }
   /* Sort indicators */
-  th.sortable { position: relative; user-select:none; }
+  th.sortable { position: relative; user-select:none; background-color:#2e2b41; color:#fff;}
   th.sortable .sort-caret { position:absolute; right:.5rem; opacity:.4; }
   th.sortable.sorted-asc .sort-caret::after { content:"▲"; }
   th.sortable.sorted-desc .sort-caret::after { content:"▼"; }
@@ -28,8 +29,8 @@
 <div class="content-with-sidebar wrapper">
 
   <div class="card shadow-sm">
-    <div class="card-header d-flex justify-content-between align-items-center" style="background:#6f42c1;color:#fff;">
-      <h5 class="mb-0">Sell-In + Returns Captures</h5>
+    <div class="card-header d-flex justify-content-between align-items-center" style="background-color:#191d28; color:#fff;">
+      <h5 class="mb-0 head1">Sell-In + Returns Captures</h5>
 
       <div class="d-flex flex-wrap gap-2 align-items-center">
         <!-- Quick search -->
@@ -80,7 +81,7 @@
       </div>
     </div>
 
-    <div class="card-body">
+    <div class="card-body" style="background-color:#2e2b41; color:#fff;">
       <!-- Hidden Riyal symbol definition -->
       <svg style="display:none" xmlns="http://www.w3.org/2000/svg">
         <symbol id="icon-riyal" viewBox="0 0 2000 2000">
@@ -102,11 +103,11 @@
       </div>
 
       <!-- Empty state -->
-      <div id="empty-state" class="text-center text-muted py-3 d-none">No rows match your filters.</div>
+      <div id="empty-state" class="text-center  py-3 d-none" >No rows match your filters.</div>
 
       <!-- Pagination toolbar -->
       <div class="d-flex justify-content-between align-items-center mt-2 flex-wrap gap-2">
-        <div id="pager-info" class="small text-muted"></div>
+        <div id="pager-info" class="small"></div>
         <nav>
           <ul class="pagination pagination-sm mb-0">
             <li class="page-item"><button class="page-link" id="first-page">« First</button></li>

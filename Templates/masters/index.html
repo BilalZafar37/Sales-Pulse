@@ -2,14 +2,30 @@
 {% block title %}Masters{% endblock %}
 
 {% block styles %}
-
+ body {background-color:#1f1c2e; font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color:white; }
 .modal-content,
 .modal-content .modal-title,
 .modal-content .form-label,
 .modal-content .form-text .form-label{
   color: #212529;
 }
+.table-responsive {
+  max-height: 550px;  
+  overflow-y: auto;
+  overflow-x: auto;
+}
 
+.table-responsive thead th {
+  position: sticky;
+  top: 0;
+  background-color: #2e2b41 !important; /* same as your header */
+  color: #fff !important;
+  z-index: 10; /* higher than table rows */
+}
+
+.table-responsive > table {
+  border-collapse: separate !important; 
+}
 /* Keep Select2 above Bootstrap modal (modal is ~1055) */
 .select2-container { z-index: 2000 !important; }
 .select2-container .select2-dropdown { z-index: 2001 !important; }
@@ -76,7 +92,7 @@
     
       <div class="table-responsive">
         <table class="table table-sm align-middle">
-          <thead class="table-light">
+          <thead class="table-">
             <tr><th>Article</th><th>Description</th><th>Brand</th><th>Category (Code — Name)</th><th style="width:80px;"></th></tr>
           </thead>
           <tbody id="sBody"><tr><td colspan="5" class="text-muted">Loading…</td></tr></tbody>
@@ -134,7 +150,7 @@
       </div>
     
       <div class="table-responsive">
-        <table class="table table-sm align-middle">
+        <table class="table table-sm align-middle w-100">
           <thead class="table-light">
             <tr><th>CustSKUCode</th><th>Article</th><th>Desc</th><th>Brand</th><th>Category (Code — Name)</th><th style="width:80px;"></th></tr>
           </thead>
@@ -221,289 +237,6 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css"/>
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-<!-- <script>
-(() => {
-  const EP = {
-    customers: '/masters/api/customers',
-    skus:      '/masters/api/skus',
-    maps:      '/masters/api/mappings',
-    paste:     '/masters/api/mappings/paste',
-    cats:      '/masters/api/categories',
-    optCust:   '/masters/api/options/customers',
-    optSku:    '/masters/api/options/skus',
-    optCat:    '/masters/api/options/categories'
-  };
-
-
-  // ---------- Select2 loaders ----------
-  function sel2Cust($el){ $el.select2({ ajax:{ url:EP.optCust, data: p=>({term:p.term}), processResults: d=>d }, width:'100%' }); }
-  function sel2Sku($el, extra={}){ $el.select2({ ajax:{ url:EP.optSku, data:p=>({term:p.term, ...extra}), processResults:d=>d }, width:'100%' }); }
-  function sel2Cat($el){ $el.select2({ ajax:{ url:EP.optCat, data:p=>({term:p.term}) , processResults:d=>d }, width:'100%', placeholder: $el.data('placeholder') || '' }); }
-
-  // ==========================================================
-  // Customers tab
-  // ==========================================================
-  const $cBody = $('#cBody'), $cQ = $('#cQ'), cDlg = new bootstrap.Modal('#dlgCustomer');
-  function loadCustomers(){
-    $cBody.html('<tr><td colspan="5">Loading…</td></tr>');
-    const params = new URLSearchParams({ q: $cQ.val()||'', page:1, page_size:50 });
-    fetch(EP.customers + '?' + params).then(r=>r.json()).then(j=>{
-      const rows = (j.items||[]).map(r=>`
-        <tr data-id="${r.CustomerID}">
-          <td>${r.CustCode}</td>
-          <td>${r.CustName}</td>
-          <td>${r.LevelType}</td>
-          <td>${r.ParentCustID||'-'}</td>
-          <td class="text-end">
-            <button class="btn btn-sm btn-outline-primary c-edit">Edit</button>
-            <button class="btn btn-sm btn-outline-danger c-del">Del</button>
-          </td>
-        </tr>`).join('') || '<tr><td colspan="5" class="text-muted">No results.</td></tr>';
-      $cBody.html(rows);
-    });
-  }
-
-
-  $('#cAdd').on('click', ()=>{ $('#cId').val(''); $('#cCode,#cName').val(''); $('#cLevel').val('HO'); $('#cParent').empty(); sel2Cust($('#cParent')); cDlg.show(); });
-  $cBody.on('click','.c-edit', function(){
-    const tr=$(this).closest('tr'); $('#cId').val(tr.data('id'));
-    $('#cCode').val(tr.children().eq(0).text());
-    $('#cName').val(tr.children().eq(1).text());
-    $('#cLevel').val(tr.children().eq(2).text());
-    $('#cParent').empty(); sel2Cust($('#cParent'));
-    cDlg.show();
-  });
-  $cBody.on('click','.c-del', function(){
-    const id=$(this).closest('tr').data('id');
-    if(!confirm('Delete this customer?')) return;
-    fetch(`${EP.customers}/${id}`, {method:'DELETE'}).then(()=>loadCustomers());
-  });
-  $('#cSave').on('click', ()=>{
-    const payload = {
-      CustCode: $('#cCode').val(), CustName: $('#cName').val(),
-      LevelType: $('#cLevel').val(), ParentCustID: $('#cParent').val()||null
-    };
-    const id = $('#cId').val();
-    const req = id ? fetch(`${EP.customers}/${id}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
-                   : fetch(EP.customers, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
-    req.then(()=>{ cDlg.hide(); loadCustomers(); });
-  });
-
-  // ==========================================================
-  // SKUs tab
-  // ==========================================================
-  const $sBody=$('#sBody'), $sQ=$('#sQ'), $sBrand=$('#sBrand'),
-        sDlg = new bootstrap.Modal('#dlgSku'); sel2Cat($('#sCatSel')); sel2Cat($('#sCatSelect'));
-
-  function loadSkus(){
-    $sBody.html('<tr><td colspan="5">Loading…</td></tr>');
-    const params = new URLSearchParams({
-      q: $sQ.val()||'',
-      brand: $sBrand.val()||'',
-      category_id: $('#sCatSel').val() || '',
-      page: 1, page_size: 50
-    });
-    fetch(EP.skus + '?' + params).then(r=>r.json()).then(j=>{
-      const rows=(j.items||[]).map(r=>{
-        const cat = r.Category;
-        const catLabel = cat ? `${cat.CatCode} — ${cat.CatName||''}` : '';
-        const tip = cat ? `title="Desc: ${cat.CatDesc||''} | Sub: ${cat.SubCat||''}"` : '';
-        return `
-        <tr data-id="${r.SKU_ID}">
-          <td>${r.ArticleCode}</td><td>${r.Description||''}</td>
-          <td>${r.Brand||''}</td><td ${tip}>${catLabel}</td>
-          <td class="text-end">
-            <button class="btn btn-sm btn-outline-primary s-edit">Edit</button>
-            <button class="btn btn-sm btn-outline-danger s-del">Del</button>
-          </td>
-        </tr>`;
-      }).join('') || '<tr><td colspan="5" class="text-muted">No results.</td></tr>';
-      $sBody.html(rows);
-    });
-  }
-  $('#sRefresh').on('click', loadSkus);
-  $('#sClear').on('click', ()=>{ $sQ.val(''); $sBrand.val(''); $('#sCatSel').val(null).trigger('change'); loadSkus(); });
-
-  $('#sAdd').on('click', ()=>{
-    $('#sId').val(''); $('#sArticle,#sDesc,#sBrandEdit').val(''); $('#sCatSelect').val(null).trigger('change'); $('#sCatInfo').text('');
-    sDlg.show();
-  });
-
-  $sBody.on('click','.s-edit', function(){
-    const tr=$(this).closest('tr'), t=tr.children();
-    $('#sId').val(tr.data('id')); $('#sArticle').val(t.eq(0).text()); $('#sDesc').val(t.eq(1).text());
-    $('#sBrandEdit').val(t.eq(2).text());
-    // Pre-fill category filter label into the modal select (best-effort)
-    $('#sCatSelect').val(null).trigger('change');
-    sDlg.show();
-  });
-
-  $sBody.on('click','.s-del', function(){
-    const id=$(this).closest('tr').data('id');
-    if(!confirm('Delete this SKU?')) return;
-    fetch(`${EP.skus}/${id}`, {method:'DELETE'}).then(()=>loadSkus());
-  });
-
-  // Update helper text with category details on selection
-  $('#sCatSelect').on('select2:select', function(e){
-    const text = e.params.data.text || '';
-    $('#sCatInfo').text(text);
-  }).on('select2:clear', ()=>$('#sCatInfo').text(''));
-
-  $('#sSave').on('click', ()=>{
-    const payload = {
-      ArticleCode: $('#sArticle').val(),
-      Description: $('#sDesc').val(),
-      Brand: $('#sBrandEdit').val(),
-      CategoryMappingID: $('#sCatSelect').val() || null
-    };
-    const id=$('#sId').val();
-    const req=id? fetch(`${EP.skus}/${id}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
-                : fetch(EP.skus, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
-    req.then(()=>{ sDlg.hide(); loadSkus(); });
-  });
-
-  // ==========================================================
-  // Categories tab
-  // ==========================================================
-  const $catBody = $('#catBody'), $catQ = $('#catQ'), catDlg = new bootstrap.Modal('#dlgCategory');
-
-  function loadCategories(){
-    $catBody.html('<tr><td colspan="6">Loading…</td></tr>');
-    const params = new URLSearchParams({ q: $catQ.val()||'', page:1, page_size:100 });
-    fetch(EP.cats + '?' + params).then(r=>r.json()).then(j=>{
-      const rows = (j.items||[]).map(r=>`
-        <tr data-id="${r.ID}">
-          <td>${r.CatCode||''}</td>
-          <td>${r.CatName||''}</td>
-          <td>${r.CatDesc||''}</td>
-          <td>${r.SubCat||''}</td>
-          <td class="text-center">${r.SKUCount ?? 0}</td>
-          <td class="text-end">
-            <button class="btn btn-sm btn-outline-primary cat-edit">Edit</button>
-            <button class="btn btn-sm btn-outline-danger cat-del">Del</button>
-          </td>
-        </tr>`).join('') || '<tr><td colspan="6" class="text-muted">No results.</td></tr>';
-      $catBody.html(rows);
-    });
-  }
-
-  $('#catAdd').on('click', ()=>{
-    $('#catId').val(''); $('#catCode,#catName,#catDesc,#subCat').val('');
-    catDlg.show();
-  });
-
-  $catBody.on('click','.cat-edit', function(){
-    const tr=$(this).closest('tr'), t=tr.children();
-    $('#catId').val(tr.data('id'));
-    $('#catCode').val(t.eq(0).text());
-    $('#catName').val(t.eq(1).text());
-    $('#catDesc').val(t.eq(2).text());
-    $('#subCat').val(t.eq(3).text());
-    catDlg.show();
-  });
-
-  $catBody.on('click','.cat-del', function(){
-    const id=$(this).closest('tr').data('id');
-    if(!confirm('Delete this Category? If referenced by SKUs, you will be asked to confirm a forced delete.')) return;
-    // Try safe delete first
-    fetch(`${EP.cats}/${id}`, {method:'DELETE'}).then(async r=>{
-      if(r.ok){ loadCategories(); return; }
-      const j = await r.json().catch(()=>({}));
-      if(j && j.error && j.error.includes('in use')){
-        if(confirm(j.error + '\n\nProceed and detach from SKUs?')){
-          fetch(`${EP.cats}/${id}?force=1`, {method:'DELETE'}).then(()=>loadCategories());
-        }
-      }
-    });
-  });
-
-  $('#catSave').on('click', ()=>{
-    const payload = {
-      CatCode: $('#catCode').val(),
-      CatName: $('#catName').val(),
-      CatDesc: $('#catDesc').val(),
-      SubCat:  $('#subCat').val()
-    };
-    const id = $('#catId').val();
-    const req = id ? fetch(`${EP.cats}/${id}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
-                   : fetch(EP.cats, {method:'POST',  headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
-    req.then(async r=>{
-      if(!r.ok){
-        const j = await r.json().catch(()=>({}));
-        alert(j.error || 'Save failed');
-        return;
-      }
-      catDlg.hide(); loadCategories(); // also refresh SKU filter selects
-      $('#sCatSel').val(null).trigger('change');
-      $('#sCatSelect').val(null).trigger('change');
-    });
-  });
-
-  // ==========================================================
-  // Mapping tab
-  // ==========================================================
-  const $mBody=$('#mBody'); const mDlg=new bootstrap.Modal('#dlgMap'); const pDlg=new bootstrap.Modal('#dlgPaste');
-  sel2Cust($('#mCustomer'));
-  $('#mCustomer').on('change', loadMappings);
-
-  function loadMappings(){
-    const cust = $('#mCustomer').val();
-    if(!cust){ $mBody.html('<tr><td colspan="6">Select a customer</td></tr>'); return; }
-    $mBody.html('<tr><td colspan="6">Loading…</td></tr>');
-    const params = new URLSearchParams({ customer_id:cust, page:1, page_size:100 });
-    fetch(EP.maps + '?' + params).then(r=>r.json()).then(j=>{
-      const rows=(j.items||[]).map(r=>{
-        const cat = r.Category;
-        const catLabel = cat ? `${cat.CatCode} — ${cat.CatName||''}` : '';
-        const tip = cat ? `title="Desc: ${cat.CatDesc||''} | Sub: ${cat.SubCat||''}"` : '';
-        return `
-        <tr data-id="${r.MapID}">
-          <td>${r.CustSKUCode}</td><td>${r.ArticleCode}</td><td>${r.SKU_Desc||''}</td>
-          <td>${r.Brand||''}</td><td ${tip}>${catLabel}</td>
-          <td class="text-end"><button class="btn btn-sm btn-outline-danger m-del">Del</button></td>
-        </tr>`;
-      }).join('') || '<tr><td colspan="6" class="text-muted">No mappings.</td></tr>';
-      $mBody.html(rows);
-    });
-  }
-
-  $('#mAdd').on('click', ()=>{
-    $('#mCustSel').empty(); $('#mSkuSel').empty(); $('#mCustSku').val('');
-    sel2Cust($('#mCustSel')); sel2Sku($('#mSkuSel'));
-    const cur = $('#mCustomer').val(); if(cur){ $('#mCustSel').append(new Option('', '', false, false)); $('#mCustSel').val(cur).trigger('change'); }
-    mDlg.show();
-  });
-
-  $('#mSave').on('click', ()=>{
-    const payload = { CustomerID: $('#mCustSel').val(), SKU_ID: $('#mSkuSel').val(), CustSKUCode: $('#mCustSku').val() };
-    fetch(EP.maps, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
-      .then(r=>r.json()).then(()=>{ mDlg.hide(); loadMappings(); });
-  });
-
-  $mBody.on('click','.m-del', function(){
-    const id=$(this).closest('tr').data('id');
-    if(!confirm('Delete mapping?')) return;
-    fetch(`${EP.maps}/${id}`, {method:'DELETE'}).then(()=>loadMappings());
-  });
-
-  // Paste flow
-  $('#mPaste').on('click', ()=>{ $('#pasteArea').val(''); pDlg.show(); });
-  $('#pasteSave').on('click', ()=>{
-    const cust = $('#mCustomer').val(); if(!cust){ alert('Pick a customer first.'); return; }
-    const lines = $('#pasteArea').val().split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
-    const rows = lines.map(l=>{
-      const parts = l.split(','); return { CustSKUCode: (parts[0]||'').trim(), ArticleCode: (parts[1]||'').trim() }
-    }).filter(r=>r.CustSKUCode && r.ArticleCode);
-    fetch(EP.paste, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ CustomerID: cust, rows })})
-      .then(r=>r.json()).then(()=>{ pDlg.hide(); loadMappings(); });
-  });
-
-  // init
-  loadCustomers(); loadSkus(); loadCategories();
-})();
-</script> -->
-
 
 <script>
 (() => {
@@ -862,7 +595,6 @@
   loadCustomers(); loadSkus(); loadCategories();
 })();
 </script>
-
 
 {% endblock %}
  

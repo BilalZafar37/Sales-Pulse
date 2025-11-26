@@ -1,8 +1,52 @@
 {% extends "base.html" %}
+
 {% block title %}Preview Mapping · Customer Sell-Out Profile{% endblock %}
 
+{% block styles %}
+
+  .body {background-color:#1f1c2e; font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color:white; }
+  
+  .table-responsive > table {
+  display: block; 
+  overflow-x: auto !important; 
+  overflow-y: auto !important;  
+  -webkit-overflow-scrolling: touch;
+  max-height: 600px;            
+  white-space: nowrap;
+  width: 100% !important;        
+  min-width: 1200px !important;  
+  table-layout: auto !important;
+  border-collapse: separate !important; 
+}
+
+.table-responsive thead th {
+  position: sticky;
+  top: 0;
+  z-index: 60 !important;
+  background-color: #2e2b41 !important;
+  color: #fff !important;
+  white-space: nowrap;
+}
+
+#grid tbody tr {
+  background-color: #2e2b41 !important;
+  color: white !important;
+}
+
+#grid th, #grid td {
+  border-color: #3b3950 !important;
+}
+
+.container, .container-fluid, .row {
+  overflow-x: visible !important;
+}
+  details > summary {
+    cursor: pointer;
+  }
+{% endblock %}
+
 {% block content %}
-<div class="container-fluid py-3">
+<div class="container-fluid py-3 body">
   <h3 class="mb-2">Preview Parsed Rows</h3>
   <p class="text-muted mb-3">
     <strong>File:</strong> {{ filename }} &nbsp;|&nbsp;
@@ -105,8 +149,4 @@
   </div>
 </div>
 
-<style>
-  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-  details > summary { cursor: pointer; }
-</style>
 {% endblock %}
