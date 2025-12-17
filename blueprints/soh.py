@@ -65,11 +65,11 @@ def _load_df(fs)->pd.DataFrame:
     ext = fs.filename.rsplit(".",1)[1].lower()
     if ext in {"xlsx","xls"}:
         try:
-            df = pd.read_excel(fs, sheet_name="SOH")
+            df = pd.read_excel(fs, sheet_name="SOH", dtype={"MEC-SKU": str, "MEC_SKU": str})
         except Exception:
             fs.stream.seek(0); df = pd.read_excel(fs)
     else:
-        df = pd.read_csv(fs)
+        df = pd.read_csv(fs, dtype=str)
     df.columns = [c.strip() for c in df.columns]
     return _normalize_soh_columns(df)
 
@@ -318,21 +318,7 @@ def upload():
         
         
         file_hash = _sha256_fs(fs)
-        
-        # Debug: see any row with this hash in the table (across all customers)
-        # try:
-        #     rows = model.execute(
-        #         text("""
-        #             SELECT TOP 5 SOHUploadID, CustomerID, [Date], SourceFileHash
-        #             FROM dbo.SP_SOH_Uploads WITH (NOLOCK)
-        #             WHERE SourceFileHash = :h
-        #             ORDER BY SOHUploadID DESC
-        #         """),
-        #         {"h": file_hash}
-        #     ).fetchall()
-        #     current_app.logger.info("DEBUG HASH %s -> existing rows: %s", file_hash, rows)
-        # except Exception as _e:
-        #     current_app.logger.exception("DEBUG HASH lookup failed")
+    
         
         dup = (model.query(SP_SOH_Uploads.SOHUploadID)
                .filter(SP_SOH_Uploads.CustomerID==customer_id,
@@ -348,6 +334,15 @@ def upload():
         missing = [c for c in required_cols if c not in df.columns]
         if missing:
             return jsonify(ok=False, error=f"Missing required columns: {', '.join(missing)}"), 400
+        
+        # SKU name normalization
+        df["MEC_SKU"] = (
+            df["MEC_SKU"]
+            .astype(str)
+            .str.strip()
+            .str.replace(r"\.0$", "", regex=True)
+        )
+
         
         # ---- Validate and normalize Brand names ----
         # Load master list of valid brand names from DB

@@ -2,7 +2,9 @@
 from __future__ import annotations
 from flask import Blueprint, request, jsonify, send_file, current_app, render_template
 from datetime import datetime, date, timedelta
-from sqlalchemy import or_, func, text
+from sqlalchemy import or_, func, text, case
+from sqlalchemy.orm import aliased
+
 import io
 from openpyxl import Workbook, load_workbook
 
@@ -16,6 +18,12 @@ bp = Blueprint(
 # ----------------------------
 # Helpers
 # ----------------------------
+
+def _fmt_m(v):
+    if not v:
+        return "0.0M"
+    return f"{round(v / 1_000_000, 1)}M"
+
 
 def _status_id_from_payload(data):
     sid = data.get("StatusID")
@@ -113,67 +121,123 @@ def _recompute_customer_statuses() -> dict:
     hib_out_days= _get_cfg_int("HibernatingSellOutThresholdDays", 30)
 
     sid_active   = _get_status_id("Active")
+    sid_inactive = _get_status_id("INACTIVE")
     sid_dead     = _get_status_id("DEAD")
     sid_disabled = _get_status_id("Disabled")
     tag_in       = _get_status_id("Hibernating-Sell-in")
     tag_out      = _get_status_id("Hibernating-Sell-out")
 
-    # Subqueries: last SELLIN/SELLOUT
-    last_in = (model.query(
-                    SP_InventoryLedger.CustomerID.label("CID"),
-                    func.max(SP_InventoryLedger.DocDate).label("last_in"))
-               .filter(SP_InventoryLedger.MovementType == "SELLIN")
-               .group_by(SP_InventoryLedger.CustomerID)
-               ).subquery()
+    # ---- Consolidated activity per HO (includes branches) ----
 
-    last_out = (model.query(
-                    SP_InventoryLedger.CustomerID.label("CID"),
-                    func.max(SP_InventoryLedger.DocDate).label("last_out"))
-                .filter(SP_InventoryLedger.MovementType == "SELLOUT")
-                .group_by(SP_InventoryLedger.CustomerID)
-                ).subquery()
+    # Map every customer to its HO
+    cust_to_ho = (
+        model.query(
+            SP_Customer.CustomerID.label("CID"),
+            func.coalesce(SP_Customer.ParentCustID, SP_Customer.CustomerID).label("HO_ID")
+        )
+    ).subquery()
 
-    rows = (model.query(
-                SP_Customer.CustomerID,
-                SP_Customer.StatusID,
-                last_in.c.last_in,
-                last_out.c.last_out)
-            .outerjoin(last_in, last_in.c.CID == SP_Customer.CustomerID)
-            .outerjoin(last_out, last_out.c.CID == SP_Customer.CustomerID)
-            ).all()
+    # Last SELL-IN per HO
+    last_in = (
+        model.query(
+            cust_to_ho.c.HO_ID,
+            func.max(SP_InventoryLedger.DocDate).label("last_in")
+        )
+        .join(cust_to_ho, cust_to_ho.c.CID == SP_InventoryLedger.CustomerID)
+        .filter(SP_InventoryLedger.MovementType == "SELLIN")
+        .group_by(cust_to_ho.c.HO_ID)
+    ).subquery()
+
+    # Last SELL-OUT per HO
+    last_out = (
+        model.query(
+            cust_to_ho.c.HO_ID,
+            func.max(SP_InventoryLedger.DocDate).label("last_out")
+        )
+        .join(cust_to_ho, cust_to_ho.c.CID == SP_InventoryLedger.CustomerID)
+        .filter(SP_InventoryLedger.MovementType == "SELLOUT")
+        .group_by(cust_to_ho.c.HO_ID)
+    ).subquery()
+
+    # HO customers that currently have SOH
+    ho_with_soh = (
+        model.query(
+            cust_to_ho.c.HO_ID
+        )
+        .join(SP_InventoryLedger, SP_InventoryLedger.CustomerID == cust_to_ho.c.CID)
+        .filter(SP_InventoryLedger.MovementType == "ADJUST")
+        .group_by(cust_to_ho.c.HO_ID)
+    ).subquery()
+
+    
+    rows = (
+        model.query(
+            SP_Customer.CustomerID,
+            SP_Customer.StatusID,
+            last_in.c.last_in,
+            last_out.c.last_out,
+            ho_with_soh.c.HO_ID.label("has_soh")
+        )
+        .filter(SP_Customer.LevelType == "HO")
+        .outerjoin(last_in, last_in.c.HO_ID == SP_Customer.CustomerID)
+        .outerjoin(last_out, last_out.c.HO_ID == SP_Customer.CustomerID)
+        .outerjoin(ho_with_soh, ho_with_soh.c.HO_ID == SP_Customer.CustomerID)
+        .all()
+    )
+
+
+
 
     tally = {"PrimaryUpdated":0, "TagsUpdated":0, "SkippedDisabled":0}
-    for cid, cur_sid, d_in, d_out in rows:
+    for cid, cur_sid, d_in, d_out, has_soh in rows:
         # Skip auto for Disabled
         if cur_sid == sid_disabled:
             tally["SkippedDisabled"] += 1
             continue
 
-        ds_in  = (today - d_in).days  if d_in  else 10**9
-        ds_out = (today - d_out).days if d_out else 10**9
-
-        # Compute tags independently (can hold both)
+        # Default
+        new_primary = sid_inactive
         want_tags = set()
-        if ds_in  > hib_in_days:  want_tags.add(tag_in)
-        if ds_out > hib_out_days: want_tags.add(tag_out)
 
-        # DEAD only when BOTH are past Dead threshold; else ACTIVE
-        new_primary = sid_dead if (ds_in > dead_days and ds_out > dead_days) else sid_active
+        ds_in  = (today - d_in).days if d_in else None
+        ds_out = (today - d_out).days if d_out else None
 
-        # Upsert tags
+        has_soh = bool(has_soh)
+
+        # RULE 1: No SOH = always INACTIVE
+        if not has_soh:
+            new_primary = sid_inactive
+            want_tags = set()
+        else:
+            has_activity = bool(d_in or d_out)
+
+            if has_activity:
+                new_primary = sid_active
+
+                # DEAD only if both exceeded DEAD threshold
+                if (
+                    (ds_in is None or ds_in > dead_days)
+                    and
+                    (ds_out is None or ds_out > dead_days)
+                ):
+                    new_primary = sid_dead
+
+            # Apply hibernation ONLY if ACTIVE
+            if new_primary == sid_active:
+                if ds_in is None or ds_in > hib_in_days:
+                    want_tags.add(tag_in)
+                if ds_out is None or ds_out > hib_out_days:
+                    want_tags.add(tag_out)
+
+        # Upsert tags (already computed safely above)
         before = set(
             sid for (sid,) in model.query(SP_CustomerStatusTag.StatusID)
-                                   .filter(SP_CustomerStatusTag.CustomerID == cid)
+                                .filter(SP_CustomerStatusTag.CustomerID == cid)
         )
         if before != want_tags:
-            # Compute tags independently (can hold both)
-            want_tags = set()
-            if ds_in  > hib_in_days:  want_tags.add(tag_in)
-            if ds_out > hib_out_days: want_tags.add(tag_out)
-    
-            # Sync tags (atomic + idempotent)
             _sync_tags(cid, want_tags)
-            tally["TagsUpdated"] += 1  # optional: count only when changed; fine to leave as-is
+            tally["TagsUpdated"] += 1
+
 
         # Update primary if changed
         if cur_sid != new_primary:
@@ -229,32 +293,78 @@ def options_customers():
 def customers_list():
     term = (request.args.get("q") or "").strip()
 
-    q = (model.query(
+    q = (
+        model.query(
             SP_Customer.CustomerID,
             SP_Customer.CustCode,
             SP_Customer.CustName,
             SP_Customer.LevelType,
-            SP_Customer.ParentCustID,
             SP_Customer.StatusID,
-            SP_Status.StatusName,          # <- bring as column
-            SP_Customer.StatusDate
+            SP_Status.StatusName,
+            SP_Customer.StatusDate,
+
+            # ---- GO LIVE (first SOH / ADJUST) ----
+            func.min(
+                case(
+                    (SP_InventoryLedger.MovementType == "ADJUST", SP_InventoryLedger.DocDate),
+                    else_=None
+                )
+            ).label("go_live"),
+
+            # ---- TOTAL SELL-IN ----
+            func.sum(
+                case(
+                    (SP_InventoryLedger.MovementType == "SELLIN", SP_InventoryLedger.Qty),
+                    else_=0
+                )
+            ).label("total_sell_in"),
+
+            # ---- TOTAL SELL-OUT ----
+            func.sum(
+                case(
+                    (SP_InventoryLedger.MovementType == "SELLOUT", -SP_InventoryLedger.Qty),
+                    else_=0
+                )
+            ).label("total_sell_out"),
         )
         .outerjoin(SP_Status, SP_Status.StatusID == SP_Customer.StatusID)
+        .outerjoin(SP_InventoryLedger, SP_InventoryLedger.CustomerID == SP_Customer.CustomerID)
+        .filter(
+            or_(
+                SP_Customer.LevelType == "HO",
+                SP_Customer.LevelType.notin_(["HO", "Branch"])  # orphan / misconfigured
+            )
+        )
+        .group_by(
+            SP_Customer.CustomerID,
+            SP_Customer.CustCode,
+            SP_Customer.CustName,
+            SP_Customer.LevelType,
+            SP_Customer.StatusID,
+            SP_Status.StatusName,
+            SP_Customer.StatusDate
+        )
     )
 
     if term:
         like = f"%{term}%"
         q = q.filter(or_(SP_Customer.CustName.ilike(like), SP_Customer.CustCode.ilike(like)))
 
-    q = q.order_by(SP_Customer.CustName)
+    # q = q.order_by(SP_Customer.CustName)
+    
+    sort = (request.args.get("sort") or "").lower()
+
+    if sort == "name":
+        q = q.order_by(SP_Customer.CustName)
+    elif sort == "sellin":
+        q = q.order_by(text("total_sell_in DESC"))
+    elif sort == "sellout":
+        q = q.order_by(text("total_sell_out DESC"))
+    else:
+        q = q.order_by(SP_Customer.CustName)
+    
     total, rows = _paginate(q)
 
-    parent_ids = {r.ParentCustID for r in rows if r.ParentCustID}
-    parent_map = {}
-    if parent_ids:
-        pairs = (model.query(SP_Customer.CustomerID, SP_Customer.CustCode, SP_Customer.CustName)
-                      .filter(SP_Customer.CustomerID.in_(parent_ids)).all())
-        parent_map = {cid: (code, name) for cid, code, name in pairs}
 
     page_ids = [r.CustomerID for r in rows]
     tag_rows = (model.query(SP_CustomerStatusTag.CustomerID, SP_Status.StatusName)
@@ -267,24 +377,23 @@ def customers_list():
     
     items = []
     for r in rows:
-        # r is a tuple-like row; attribute access works via labels
-        p_code, p_name = (None, None)
-        if r.ParentCustID and r.ParentCustID in parent_map:
-            p_code, p_name = parent_map[r.ParentCustID]
-
         items.append({
-            "CustomerID":   r.CustomerID,
-            "CustCode":     r.CustCode,
-            "CustName":     r.CustName,
-            "LevelType":    r.LevelType,
-            "ParentCustID": r.ParentCustID,
-            "ParentCustCode": p_code,
-            "ParentCustName": p_name,
-            "StatusID":     r.StatusID,
-            "StatusName":   r.StatusName,                    # <- explicit
-            "StatusDate":   _json_date(r.StatusDate),
-            "StatusTags": tags_by_cust.get(r.CustomerID, []),
+            "CustomerID": r.CustomerID,
+            "CustCode": r.CustCode,
+            "CustName": r.CustName,
+            "LevelType": r.LevelType,
+            "StatusID": r.StatusID,
+            "StatusName": r.StatusName,
+
+            "StatusDate": _json_date(r.StatusDate),
+
+            "GoLiveDate": _json_date(r.go_live),
+            "TotalSellIn": _fmt_m(r.total_sell_in),
+            "TotalSellOut": _fmt_m(r.total_sell_out),
+
+            "IsOrphan": r.LevelType not in ("HO", "Branch"),
         })
+
     return jsonify(ok=True, total=total, items=items)
 
 
@@ -338,6 +447,33 @@ def customers_update(cid):
     
     model.commit()
     return jsonify(ok=True)
+
+# Braches POP-Up
+@bp.route("/api/customers/<int:ho_id>/branches")
+def customer_branches(ho_id):
+    rows = (
+        model.query(
+            SP_Customer.CustomerID,
+            SP_Customer.CustCode,
+            SP_Customer.CustName,
+            SP_Status.StatusName
+        )
+        .outerjoin(SP_Status, SP_Status.StatusID == SP_Customer.StatusID)
+        .filter(SP_Customer.ParentCustID == ho_id)
+        .order_by(SP_Customer.CustName)
+        .all()
+    )
+
+    return jsonify(items=[
+        {
+            "CustomerID": r.CustomerID,
+            "CustCode": r.CustCode,
+            "CustName": r.CustName,
+            "StatusName": r.StatusName
+        }
+        for r in rows
+    ])
+
 
 @bp.route("/api/customers/<int:cid>", methods=["DELETE"])
 def customers_delete(cid):
@@ -502,11 +638,13 @@ def bulk_upload_customers():
             skipped += 1
             errors.append({"row": i, "error": "Missing CustCode/CustName/LevelType"})
             continue
-        code = (r["CustCode"] or "").strip().upper()
+        code = (r["CustCode"] or "").strip().upper().replace(" ", "")
         name = (r["CustName"] or "").strip()
-        level= (r["LevelType"] or "HO").strip()
-        parent_code = (r.get("ParentCode") or "").strip().upper()
-        status_name = (r.get("Status") or r.get("StatusName") or "").strip()
+        level= (r["LevelType"] or "HO").strip().replace(" ", "")
+        if level == "BRANCH":
+            level = "Branch"
+        parent_code = str((r.get("ParentCode") or "")).strip().replace(" ", "")
+        status_name = str((r.get("Status") or r.get("StatusName") or "")).strip()
         status_id = None
         if status_name:
             status_id = _status_id_from_payload({"StatusName": status_name})

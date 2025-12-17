@@ -182,8 +182,6 @@ def captures_data():
             v = getattr(r, k, None)
             if isinstance(v, datetime):
               d[k] = v.strftime('%Y-%m-%d %H:%M:%S')
-            # if isinstance(v, Float):
-            #     d[k] = float(v.d) if v is not None else None
             else:
               d[k] = str(v) if (v is not None and not isinstance(v,(int,float))) else v
           out_rows.append(d)
@@ -330,7 +328,7 @@ def set_user_filters():
 
         model.commit()
         flash(f"{i} filters saved.", "success")
-        return redirect(url_for('.set_user_filters'))
+        return redirect(url_for('sell_in.set_user_filters'))
 
     # --- PRELOAD DATA FOR TEMPLATE -------------
     # 1) Distinct values for multi-select columns
@@ -776,6 +774,7 @@ def capture_filtered_sellin(filters, from_date=None, to_date=None, also_write_le
         )
 
 # For SKU upset while api runs
+
 def add_missing_skus_via_tvp(sess_or_engine, codes_iterable):
     # normalize + de-dup
     seen, rows = set(), []
@@ -791,7 +790,6 @@ def add_missing_skus_via_tvp(sess_or_engine, codes_iterable):
     if not rows:
         return
 
-    # get raw connection
     if isinstance(sess_or_engine, Engine):
         raw = sess_or_engine.raw_connection()
         manage_commit = True
@@ -803,35 +801,35 @@ def add_missing_skus_via_tvp(sess_or_engine, codes_iterable):
     try:
         cur = raw.cursor()
 
-        # TVP fast path if available
-        if hasattr(pyodbc, "SQL_SS_TABLE"):
-            tvp_cols = (('ArticleCode', pyodbc.SQL_WVARCHAR, 100, 0, False),)
-            cur.setinputsizes([(pyodbc.SQL_SS_TABLE, tvp_cols)])
-            tvp_value = ('dbo.ArticleCodeList', rows)
-            cur.execute("{CALL dbo.usp_AddMissingSkusFromTVP (?)}", (tvp_value,))
-        else:
-            # Fallback: unique temp table name per call
-            tmp = f"#Codes_{uuid.uuid4().hex[:8]}"
-            cur.execute(f"CREATE TABLE {tmp} (ArticleCode NVARCHAR(100) NOT NULL PRIMARY KEY);")
-            cur.fast_executemany = True
-            cur.executemany(f"INSERT INTO {tmp}(ArticleCode) VALUES (?);", rows)
-            cur.execute(f"""
-                INSERT INTO dbo.SP_SKU(ArticleCode)
-                SELECT c.ArticleCode
-                FROM {tmp} AS c
-                LEFT JOIN dbo.SP_SKU AS t WITH (INDEX(IX_SP_SKU_ArticleCode))
-                       ON t.ArticleCode = c.ArticleCode
-                WHERE t.ArticleCode IS NULL;
-            """)
-            # be nice and clean up
-            cur.execute(f"DROP TABLE {tmp};")
+        # Create temp table
+        cur.execute("""
+            CREATE TABLE #ArticleCodes (
+                ArticleCode NVARCHAR(100) NOT NULL PRIMARY KEY
+            );
+        """)
+
+        # Bulk insert
+        cur.fast_executemany = True
+        cur.executemany(
+            "INSERT INTO #ArticleCodes (ArticleCode) VALUES (?);",
+            rows
+        )
+
+        # Call stored procedure using temp table
+        cur.execute("""
+            EXEC dbo.usp_AddMissingSkusFromTempTable;
+        """)
 
         if manage_commit:
             raw.commit()
+
     finally:
-        try: raw.close()
-        except Exception: pass
-  
+        try:
+            raw.close()
+        except Exception:
+            pass
+
+
 # ---------------- Fake Sell-In helpers ---------------- #
 
 def _rand_alnum(n=6):

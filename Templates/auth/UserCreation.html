@@ -13,6 +13,9 @@
   --danger:#dc3545;
   --warning:#ffc107;
 }
+
+label{ color: white }
+
 body{ background:var(--bg); color:#fff; }
 .page-wrap{ padding: 16px 20px 96px; }
 
@@ -86,7 +89,7 @@ select[multiple]{ min-height: 160px; }
     <div id="topBarText">Changes apply after the user <strong>logs in again</strong>.</div>
   </div>
 
-  <form id="userCreateForm" class="card card-glass" action="{{ url_for('user_admin.users_create_submit') }}" method="post">
+  <form id="userCreateForm" class="card card-glass" action="{{ url_for('user_admin.users_create_submit') }}" method="post" autocomplete="off">
 
     <div class="card-header d-flex align-items-center justify-content-between">
       <div>
@@ -104,7 +107,7 @@ select[multiple]{ min-height: 160px; }
         <div class="col-md-4">
           <label class="form-label">Username <span class="text-danger" id="reqUser">*</span></label>
           <input name="username" id="username" class="form-control" placeholder="e.g. j.doe"
-                 required pattern="^[A-Za-z0-9._-]{3,30}$">
+                 required pattern="^[A-Za-z0-9._-]{3,30}$" autocomplete="off">
           <div class="form-text help">3–30 chars, letters, numbers, dot, underscore, or dash.</div>
         </div>
 

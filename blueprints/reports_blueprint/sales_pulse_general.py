@@ -11,7 +11,7 @@ from models import (
     SP_InventoryLedger,
     SP_SOH_Uploads, SP_SOH_Detail,
     SP_Customer, SP_SKU, SP_Customer_SKU_Map,
-    SP_CategoriesMappingMain,
+    SP_CategoriesMappingMain, SP_MCSI_SellIn
 )
 
 bp = Blueprint("sales_pulse_general", __name__, static_folder=STATIC_DIR, url_prefix="/sales-pulse-general")
@@ -65,67 +65,91 @@ def _latest_active_snapshot(customer_id: int, brand: str | None, sku_id: int, as
 def _sum_signed_after_date(customer_id: int, sku_id: int, day: date, until_incl: date) -> float:
     """Sum SIGNED for DocDate > day and <= until_incl."""
     signed = _signed_qty_expr()
+    cust_to_ho = _cust_to_ho_subquery()
     D = _docdate_date()
     q = (model.query(func.coalesce(func.sum(signed), 0.0))
-         .filter(SP_InventoryLedger.CustomerID == customer_id,
-                 SP_InventoryLedger.SKU_ID == sku_id,
-                 D > day, D <= until_incl))
+         .filter(
+                cust_to_ho.c.HO_ID == customer_id,
+                cust_to_ho.c.CID == SP_InventoryLedger.CustomerID,
+                SP_InventoryLedger.SKU_ID == sku_id,
+                D > day, D <= until_incl))
     return float(q.scalar() or 0.0)
 
 def _sum_signed_on_date_excl_adjust(customer_id: int, sku_id: int, day: date) -> float:
     """Sum SIGNED for DocDate == day, excluding ADJUST / SUPERCEED rows."""
     signed = _signed_qty_expr()
     D = _docdate_date()
+    cust_to_ho = _cust_to_ho_subquery()
+    
     q = (model.query(func.coalesce(func.sum(signed), 0.0))
-         .filter(SP_InventoryLedger.CustomerID == customer_id,
-                 SP_InventoryLedger.SKU_ID == sku_id,
-                 D == day,
-                 ~SP_InventoryLedger.MovementType.in_([MOVT_ADJUST, MOVT_SUPERCEED])))
+         .filter(
+                cust_to_ho.c.HO_ID == customer_id,
+                cust_to_ho.c.CID == SP_InventoryLedger.CustomerID,
+                SP_InventoryLedger.SKU_ID == sku_id,
+                D == day,
+                ~SP_InventoryLedger.MovementType.in_([MOVT_ADJUST, MOVT_SUPERCEED])))
     return float(q.scalar() or 0.0)
 
 def _sum_signed_inclusive(customer_id: int, sku_id: int, start_incl: date, end_incl: date) -> float:
     """Sum SIGNED for start<=DocDate<=end."""
     signed = _signed_qty_expr()
     D = _docdate_date()
+    cust_to_ho = _cust_to_ho_subquery()
+        
     q = (model.query(func.coalesce(func.sum(signed), 0.0))
-         .filter(SP_InventoryLedger.CustomerID == customer_id,
-                 SP_InventoryLedger.SKU_ID == sku_id,
-                 D >= start_incl, D <= end_incl))
+         .filter(
+                cust_to_ho.c.HO_ID == customer_id,
+                cust_to_ho.c.CID == SP_InventoryLedger.CustomerID,
+                SP_InventoryLedger.SKU_ID == sku_id,
+                D >= start_incl, D <= end_incl))
     return float(q.scalar() or 0.0)
 
 def _sum_movement_abs(customer_id:int, sku_id:int,
                       start_date:date|None, end_date:date|None,
                       movement_type:str) -> float:
-    """
-    Sum ABS(Qty) for rows of a specific MovementType in [start_date, end_date].
-    Safe even if data has mixed signs.
-    """
-    
-    if movement_type == 'SELLIN':
-        qsum = func.coalesce(func.sum(
-            case((SP_InventoryLedger.Qty > 0, SP_InventoryLedger.Qty), else_=0.0)
-        ), 0.0)
+
+    cust_to_ho = _cust_to_ho_subquery()
+
+    if movement_type == MOVT_SELLIN:
+        qsum = func.coalesce(
+            func.sum(
+                case(
+                    (SP_InventoryLedger.Qty > 0, SP_InventoryLedger.Qty),
+                    else_=0.0
+                )
+            ), 0.0
+        )
     else:
         qsum = func.coalesce(func.sum(func.abs(SP_InventoryLedger.Qty)), 0.0)
-    
-    # qabs = func.coalesce(func.sum(func.abs(SP_InventoryLedger.Qty)), 0.0)
-    q = (model.query(qsum)
-         .filter(SP_InventoryLedger.CustomerID==customer_id,
-                 SP_InventoryLedger.SKU_ID==sku_id,
-                 SP_InventoryLedger.MovementType==movement_type))
+
+    q = (
+        model.query(qsum)
+        .filter(
+            cust_to_ho.c.HO_ID == customer_id,
+            cust_to_ho.c.CID == SP_InventoryLedger.CustomerID,
+            SP_InventoryLedger.SKU_ID == sku_id,
+            SP_InventoryLedger.MovementType == movement_type
+        )
+    )
+
     if start_date:
         q = q.filter(SP_InventoryLedger.DocDate >= start_date)
     if end_date:
         q = q.filter(SP_InventoryLedger.DocDate <= end_date)
+
     return float(q.scalar() or 0.0)
 
 def _sum_returns_abs(customer_id:int, sku_id:int,
                      start_date:date|None, end_date:date|None) -> float:
+    cust_to_ho = _cust_to_ho_subquery()
+    
     q = (model.query(func.coalesce(func.sum(func.abs(SP_InventoryLedger.Qty)), 0.0))
-         .filter(SP_InventoryLedger.CustomerID == customer_id,
-                 SP_InventoryLedger.SKU_ID == sku_id,
-                 SP_InventoryLedger.MovementType == 'SELLIN',
-                 SP_InventoryLedger.Qty < 0))
+         .filter(
+                cust_to_ho.c.HO_ID == customer_id,
+                cust_to_ho.c.CID == SP_InventoryLedger.CustomerID,
+                SP_InventoryLedger.SKU_ID == sku_id,
+                SP_InventoryLedger.MovementType == 'SELLIN',
+                SP_InventoryLedger.Qty < 0))
     if start_date:
         q = q.filter(SP_InventoryLedger.DocDate >= start_date)
     if end_date:
@@ -142,77 +166,90 @@ def _signed_qty_expr():
         else_=q                                                     # fallback for any other movement type
     )
 
-def _sellin_price_stats_in_range(customer_id: int, sku_id: int,
-                                 start_date: date | None, end_date: date | None):
-    """
-    Returns (avg_price, hi_price, lo_price, last_price) for SELLIN movements in [start_date, end_date].
-    Average is *weighted* by positive quantities.
-    Adjust field names if your ledger uses different ones than UnitPrice / Value.
-    """
-    # Adjust these two lines if your ledger uses different names:
-    unit_price_col = getattr(SP_InventoryLedger, "UnitPrice", None)
-    value_col      = getattr(SP_InventoryLedger, "Value", None)
+from sqlalchemy import func
 
-    cols = [SP_InventoryLedger.Qty, SP_InventoryLedger.DocDate]
-    if unit_price_col is not None: cols.append(unit_price_col.label("UnitPrice"))
-    if value_col is not None:      cols.append(value_col.label("Value"))
+def _sellin_price_stats_from_mcsi(
+    ho_customer_id: int,
+    article: str,
+    start_date,
+    end_date
+):
+    """
+    Pricing derived from SP_MCSI_SellIn
+    - Maps SoldToParty (name) → SP_Customer → HO
+    - Uses post-go-live window only
+    - Excludes returns / negative rows
+    """
 
-    q = (model.query(*cols)
-         .filter(SP_InventoryLedger.CustomerID==customer_id,
-                 SP_InventoryLedger.SKU_ID==sku_id,
-                 SP_InventoryLedger.MovementType==MOVT_SELLIN))
+    # Subquery: customer → HO
+    cust_to_ho = _cust_to_ho_subquery()
+
+    q = (
+        model.query(
+            SP_MCSI_SellIn.DocumentDate,
+            SP_MCSI_SellIn.Net,
+            SP_MCSI_SellIn.GrossSale
+        )
+        # Map SoldToParty (name) → customer master
+        .join(
+            SP_Customer,
+            func.trim(func.lower(SP_Customer.CustName))
+            == func.trim(func.lower(SP_MCSI_SellIn.SoldToParty))
+        )
+        # Roll up to HO
+        .join(
+            cust_to_ho,
+            cust_to_ho.c.CID == SP_Customer.CustomerID
+        )
+        .filter(
+            cust_to_ho.c.HO_ID == ho_customer_id,
+            SP_MCSI_SellIn.Article == article,
+            SP_MCSI_SellIn.GrossSale > 0,   # exclude returns
+            SP_MCSI_SellIn.Net > 0              # exclude credit memos
+        )
+    )
+
     if start_date:
-        q = q.filter(SP_InventoryLedger.DocDate >= start_date)
+        q = q.filter(SP_MCSI_SellIn.DocumentDate >= start_date)
     if end_date:
-        q = q.filter(SP_InventoryLedger.DocDate <= end_date)
+        q = q.filter(SP_MCSI_SellIn.DocumentDate <= end_date)
 
-    rows = q.order_by(SP_InventoryLedger.DocDate.asc()).all()
+    rows = q.order_by(SP_MCSI_SellIn.DocumentDate.asc()).all()
+
     if not rows:
-        return (None, None, None, None)
+        return (None, None, None, None, None)
 
-    sum_qty = 0.0
-    sum_pxq = 0.0
-    hi = None
-    lo = None
-    last_price = None
+    total_value = 0.0
+    total_qty = 0.0
+    hi = lo = last_price = None
     last_dt = None
 
-    for row in rows:
-        # row unpacking based on columns list:
-        # always: Qty, DocDate
-        qty = float(row[0] or 0.0)
-        docdate = row[1]
-        unit_price = None
-        total_value = None
-        if unit_price_col is not None and value_col is not None and len(row) >= 4:
-            unit_price = row[2]
-            total_value = row[3]
-        elif unit_price_col is not None and len(row) >= 3:
-            unit_price = row[2]
-        elif value_col is not None and len(row) >= 3:
-            total_value = row[2]
-
-        if unit_price is not None:
-            up = float(unit_price)
-        elif total_value is not None and qty:
-            up = float(total_value) / qty
-        else:
-            # no pricing info -> skip line
+    for dt, net, qty in rows:
+        if not qty or qty <= 0:
             continue
 
-        if qty > 0:
-            sum_qty += qty
-            sum_pxq += qty * up
+        unit_price = float(net) / float(qty)
 
-        hi = up if (hi is None or up > hi) else hi
-        lo = up if (lo is None or up < lo) else lo
+        total_value += float(net)
+        total_qty += float(qty)
 
-        if (last_dt is None) or (docdate > last_dt):
-            last_dt = docdate
-            last_price = up
+        hi = unit_price if hi is None or unit_price > hi else hi
+        lo = unit_price if lo is None or unit_price < lo else lo
 
-    avg_price = (sum_pxq / sum_qty) if sum_qty > 0 else (last_price or hi or lo)
-    return (avg_price, hi, lo, last_price)
+        if last_dt is None or dt > last_dt:
+            last_dt = dt
+            last_price = unit_price
+
+    avg_price = (total_value / total_qty) if total_qty > 0 else last_price
+
+    return (
+        total_value,  # Sell-in Value
+        avg_price,
+        hi,
+        lo,
+        last_price
+    )
+
 
 def _candidate_pairs(brand: str | None, customer_id: int | None,
                      category_id: int | None, catcode: str | None,
@@ -226,9 +263,21 @@ def _candidate_pairs(brand: str | None, customer_id: int | None,
     pairs = set()
 
     # ledger inside window
-    q_led = model.query(SP_InventoryLedger.CustomerID, SP_InventoryLedger.SKU_ID)
+    cust_to_ho = _cust_to_ho_subquery()
+
+    q_led = (
+        model.query(
+            cust_to_ho.c.HO_ID.label("CustomerID"),
+            SP_InventoryLedger.SKU_ID
+        )
+        .join(cust_to_ho, cust_to_ho.c.CID == SP_InventoryLedger.CustomerID)
+    )
+
     if customer_id:
-        q_led = q_led.filter(SP_InventoryLedger.CustomerID == customer_id)
+        q_led = q_led.filter(
+            cust_to_ho.c.HO_ID == customer_id,
+            cust_to_ho.c.CID == SP_InventoryLedger.CustomerID
+        )
     if start_date:
         q_led = q_led.filter(SP_InventoryLedger.DocDate >= start_date)
     if end_date:
@@ -248,17 +297,37 @@ def _candidate_pairs(brand: str | None, customer_id: int | None,
 
     # snapshots for closing balance (up to end_date)
     if end_date:
-        q_snap = (model.query(SP_SOH_Uploads.CustomerID, SP_SOH_Detail.SKU_ID)
-                  .join(SP_SOH_Detail, SP_SOH_Detail.SOHUploadID == SP_SOH_Uploads.SOHUploadID)
-                  .filter(SP_SOH_Detail.IsActive == True,
-                          SP_SOH_Detail.SOHDate <= end_date))
+        cust_to_ho = _cust_to_ho_subquery()
+
+        q_snap = (
+            model.query(
+                cust_to_ho.c.HO_ID.label("CustomerID"),
+                SP_SOH_Detail.SKU_ID
+            )
+            .select_from(SP_SOH_Uploads)
+            .join(cust_to_ho, cust_to_ho.c.CID == SP_SOH_Uploads.CustomerID)
+            .join(SP_SOH_Detail, SP_SOH_Detail.SOHUploadID == SP_SOH_Uploads.SOHUploadID)
+            .filter(
+                SP_SOH_Detail.IsActive == True,
+                SP_SOH_Detail.SOHDate <= end_date
+            )
+        )
+
         if brand:
             q_snap = q_snap.filter(SP_SOH_Uploads.Brand == brand)
+
         if customer_id:
-            q_snap = q_snap.filter(SP_SOH_Uploads.CustomerID == customer_id)
+            q_snap = q_snap.filter(cust_to_ho.c.HO_ID == customer_id)
+
         if category_id or catcode:
-            q_snap = (q_snap.join(SP_SKU, SP_SKU.SKU_ID == SP_SOH_Detail.SKU_ID)
-                           .outerjoin(SP_CategoriesMappingMain, SP_CategoriesMappingMain.ID == SP_SKU.CategoryMappingID))
+            q_snap = (
+                q_snap
+                .join(SP_SKU, SP_SKU.SKU_ID == SP_SOH_Detail.SKU_ID)
+                .outerjoin(
+                    SP_CategoriesMappingMain,
+                    SP_CategoriesMappingMain.ID == SP_SKU.CategoryMappingID
+                )
+            )
             if category_id:
                 q_snap = q_snap.filter(SP_SKU.CategoryMappingID == category_id)
             if catcode:
@@ -266,6 +335,7 @@ def _candidate_pairs(brand: str | None, customer_id: int | None,
 
         for cid, sid in q_snap.distinct().all():
             pairs.add((int(cid), int(sid)))
+
 
     return list(pairs)
 
@@ -371,22 +441,27 @@ def _initial_soh_in_window(customer_id: int, sku_id: int,
 def _sum_consumers_since_anchor(customer_id:int, sku_id:int,
                                 anchor_date:date, until_incl:date) -> float:
     D = _docdate_date()
+    cust_to_ho = _cust_to_ho_subquery()
 
     # 1) All SELLOUT (absolute)
     q1 = (model.query(func.coalesce(func.sum(func.abs(SP_InventoryLedger.Qty)), 0.0))
-          .filter(SP_InventoryLedger.CustomerID == customer_id,
-                  SP_InventoryLedger.SKU_ID == sku_id,
-                  SP_InventoryLedger.MovementType == 'SELLOUT',
-                  D >= anchor_date, D <= until_incl))
+          .filter(
+                cust_to_ho.c.HO_ID == customer_id,
+                cust_to_ho.c.CID == SP_InventoryLedger.CustomerID,
+                SP_InventoryLedger.SKU_ID == sku_id,
+                SP_InventoryLedger.MovementType == 'SELLOUT',
+                D >= anchor_date, D <= until_incl))
     selout_abs = float(q1.scalar() or 0.0)
 
     # 2) All RETURNS posted as negative SELLIN
     q2 = (model.query(func.coalesce(func.sum(func.abs(SP_InventoryLedger.Qty)), 0.0))
-          .filter(SP_InventoryLedger.CustomerID == customer_id,
-                  SP_InventoryLedger.SKU_ID == sku_id,
-                  SP_InventoryLedger.MovementType == 'SELLIN',
-                  SP_InventoryLedger.Qty < 0,   # negative SELLIN
-                  D >= anchor_date, D <= until_incl))
+          .filter(
+                cust_to_ho.c.HO_ID == customer_id,
+                cust_to_ho.c.CID == SP_InventoryLedger.CustomerID,
+                SP_InventoryLedger.SKU_ID == sku_id,
+                SP_InventoryLedger.MovementType == 'SELLIN',
+                SP_InventoryLedger.Qty < 0,   # negative SELLIN
+                D >= anchor_date, D <= until_incl))
     returns_abs = float(q2.scalar() or 0.0)
 
     return selout_abs + returns_abs
@@ -437,6 +512,65 @@ def _initial_bucket_numbers(customer_id: int, sku_id: int, as_of: date):
         "SellOutSinceAnchor": float(consumers_abs),
     }
 
+def _cust_to_ho_subquery():
+    """
+    Maps any CustomerID (HO or Branch) → HO CustomerID
+    """
+    return (
+        model.query(
+            SP_Customer.CustomerID.label("CID"),
+            func.coalesce(SP_Customer.ParentCustID, SP_Customer.CustomerID).label("HO_ID")
+        )
+    ).subquery()
+
+# Debug code for HO mapping
+def _debug_ho_mapping(customer_id: int):
+    rows = (
+        model.query(
+            SP_Customer.CustomerID,
+            SP_Customer.CustCode,
+            SP_Customer.ParentCustID
+        )
+        .filter(
+            (SP_Customer.CustomerID == customer_id) |
+            (SP_Customer.ParentCustID == customer_id)
+        )
+        .all()
+    )
+    print(f"\n[DEBUG] HO mapping for customer_id={customer_id}")
+    for r in rows:
+        print(f"  CID={r.CustomerID}, Code={r.CustCode}, Parent={r.ParentCustID}")
+
+def _debug_raw_sellin(customer_id: int, sku_id: int, start, end):
+    cust_to_ho = _cust_to_ho_subquery()
+
+    rows = (
+        model.query(
+            SP_InventoryLedger.CustomerID,
+            SP_InventoryLedger.DocDate,
+            SP_InventoryLedger.Qty
+        )
+        .filter(
+            cust_to_ho.c.HO_ID == customer_id,
+            cust_to_ho.c.CID == SP_InventoryLedger.CustomerID,
+            SP_InventoryLedger.SKU_ID == sku_id,
+            SP_InventoryLedger.MovementType == 'SELLIN'
+        )
+    )
+
+    if start:
+        rows = rows.filter(SP_InventoryLedger.DocDate >= start)
+    if end:
+        rows = rows.filter(SP_InventoryLedger.DocDate <= end)
+
+    rows = rows.order_by(SP_InventoryLedger.DocDate).all()
+
+    print(f"\n[DEBUG] RAW SELLIN rows for HO={customer_id}, SKU={sku_id}")
+    if not rows:
+        print("  ❌ NO SELLIN ROWS FOUND")
+    for r in rows:
+        print(f"  CID={r.CustomerID}, Date={r.DocDate}, Qty={r.Qty}")
+
 
 # ================== routes ==================
 
@@ -470,32 +604,37 @@ def list_rows():
     
     def _closing_soh_anchored(customer_id: int, sku_id: int, as_of: date) -> float:
         """
-        SOH as of as_of using effective anchor (customer go-live clamped with SKU's own ADJUST).
-        If no anchor at all: use latest per-SKU snapshot fallback.
+        Closing SOH =
+        Remaining Initial SOH
+        + Total SELLIN after anchor
         """
-        anchor = _effective_anchor_for_sku(customer_id, sku_id, as_of)
-        if anchor:
-            base_qty, had_snap = _snapshot_qty_on_date(customer_id, sku_id, anchor)
-            if had_snap:
-                same_day_non_adjust = _sum_signed_on_date_excl_adjust(customer_id, sku_id, anchor)
-                after_anchor        = _sum_signed_after_date(customer_id, sku_id, anchor, as_of)
-                return float(base_qty) + float(same_day_non_adjust) + float(after_anchor)
-            else:
-                # Start from 0 baseline at anchor and add movements since then (includes any ADJUST >= anchor)
-                return _sum_signed_inclusive(customer_id, sku_id, anchor, as_of)
-    
-        # No customer/SKU ADJUST at all → fallback to latest snapshot then movements after it
-        snap_date, snap_qty = _latest_active_snapshot(customer_id, None, sku_id, as_of)
-        if snap_date:
-            D = _docdate_date()
-            signed = _signed_qty_expr()
-            delta = float((model.query(func.coalesce(func.sum(signed), 0.0))
-                           .filter(SP_InventoryLedger.CustomerID == customer_id,
-                                   SP_InventoryLedger.SKU_ID == sku_id,
-                                   D > snap_date, D <= as_of)).scalar() or 0.0)
-            return float(snap_qty) + delta
-        return 0.0
-    
+
+        init = _initial_bucket_numbers(customer_id, sku_id, as_of)
+
+        # No anchor → fallback to snapshot logic
+        if init["InitialSOHDate"] is None:
+            snap_date, snap_qty = _latest_active_snapshot(customer_id, None, sku_id, as_of)
+            if snap_date:
+                delta = _sum_signed_after_date(customer_id, sku_id, snap_date, as_of)
+                return float(snap_qty) + float(delta)
+            return 0.0
+
+        anchor = init["InitialSOHDate"]
+
+        # Remaining initial stock (already net of sell-out & returns)
+        remaining_initial = init["InitialSOHBalance"] or 0.0
+
+        # SELLIN only (positive qty) after anchor
+        sellin_after_anchor = _sum_movement_abs(
+            customer_id,
+            sku_id,
+            anchor,
+            as_of,
+            MOVT_SELLIN
+        )
+
+        return float(remaining_initial + sellin_after_anchor)
+
     
     data = request.get_json(force=True) if request.is_json else {}
     brand       = (data.get("brand") or "").strip() or None
@@ -507,6 +646,13 @@ def list_rows():
 
     page      = max(1, int(data.get("page") or 1))
     page_size = min(500, int(data.get("page_size") or 100))
+    
+    print("\n================ SALES PULSE DEBUG ================")
+    print(f"[DEBUG] Filters → customer_id={customer_id}, brand={brand}, from={date_from}, to={date_to}")
+
+    if customer_id:
+        _debug_ho_mapping(customer_id)
+
 
     # 1) candidate pairs based on filters and window
     pairs = _candidate_pairs(brand, customer_id, category_id, catcode, date_from, date_to)
@@ -558,7 +704,13 @@ def list_rows():
             continue
 
         # quantities inside the window
+        # sellin_qty  = _sum_movement_abs(cid, sid, date_from, date_to, MOVT_SELLIN)
         sellin_qty  = _sum_movement_abs(cid, sid, date_from, date_to, MOVT_SELLIN)
+
+        if sellin_qty == 0:
+            _debug_raw_sellin(cid, sid, date_from, date_to)
+            print(f"[DEBUG] Computed SELLIN = {sellin_qty}")
+
         sellout_qty = _sum_movement_abs(cid, sid, date_from, date_to, MOVT_SELLOUT)
 
         # closing SOH as of date_to (brand matters for snapshot scoping)
@@ -567,8 +719,13 @@ def list_rows():
         closing_soh = _closing_soh_anchored(cid, sid, date_to)
 
         # price stats & sell-in value (inside window)
-        avg_p, hi_p, lo_p, last_p = _sellin_price_stats_in_range(cid, sid, date_from, date_to)
-        sellin_value = (sellin_qty * avg_p) if (avg_p is not None) else None
+        sellin_value, avg_p, hi_p, lo_p, last_p = _sellin_price_stats_from_mcsi(
+            cid,
+            s.ArticleCode,      # Article
+            date_from,
+            date_to
+        )
+
 
         cust = cust_by_id.get(cid)
         cat  = cat_by_id.get(getattr(s, "CategoryMappingID", None)) if getattr(s, "CategoryMappingID", None) else None

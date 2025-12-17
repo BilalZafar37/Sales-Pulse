@@ -18,6 +18,18 @@
 .select2-container { z-index: 2000 !important; }
 .select2-container .select2-dropdown { z-index: 2001 !important; }
 
+/* Table row hover */
+#grid tbody tr:hover {
+  background-color: #f8f9fa;
+  cursor: pointer;
+}
+
+tr.orphan-row {
+  background-color: #ffe5e5 !important;
+  font-weight: bold;
+}
+
+
 {% endblock %}
 
 {% block content %}
@@ -51,14 +63,17 @@
       <thead class="table-light">
         <tr>
           <th style="width:32px;"><input type="checkbox" id="chkAll"></th>
+          <th>#</th>
           <th>Code</th>
-          <th>Name</th>
-          <th>Level</th>
-          <th>Parent Code</th>
-          <th>Parent Name</th>
+          <!-- <th>Level</th> -->
+          <th>Name <button data-sort="name">⇅</button></th>
+          <th>Total Sell-In <button data-sort="sellin">⇅</button></th>
+          <th>Total Sell-Out <button data-sort="sellout">⇅</button></th>
+          
           <th>Status</th>
+          <th>Go-Live</th>
           <th>Status Date</th>
-          <th style="width:140px;"></th>
+          <th style="width:140px;"><button id="clearSort" class="btn btn-sm btn-outline-secondary">Clear Sort</button></th>
         </tr>
       </thead>
       <tbody id="tbody"><tr><td colspan="9" class="text-muted">Loading…</td></tr></tbody>
@@ -108,6 +123,27 @@
     </div>
   </div>
 </div>
+
+<div class="modal fade" id="dlgBranches" style="z-index: 9999;">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Branches</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <table class="table table-sm">
+          <thead>
+            <tr><th>Code</th><th>Name</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody id="branchBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+
 {% endblock %}
 
 {% block scripts %}
@@ -193,34 +229,47 @@
 
   // State
   const state = { page:1, pageSize:50, total:0, q:'' };
+  state.sort = '';
 
   // Elements
   const $tbody = $('#tbody'), $q = $('#q');
 
   function load(){
     $tbody.html('<tr><td colspan="9">Loading…</td></tr>');
-    const params = new URLSearchParams({ q: state.q, page: state.page, page_size: state.pageSize });
+    const params = new URLSearchParams({ 
+      q: state.q, 
+      page: state.page, 
+      page_size: state.pageSize,
+      sort: state.sort
+    });
     fetch(EP.list + '?' + params)
       .then(r=>r.json()).then(j=>{
         state.total = j.total || 0;
-        const rows = (j.items||[]).map(r=>`
-          <tr data-id="${r.CustomerID}">
+        let sn = (state.page - 1) * state.pageSize;
+
+        const rows = j.items.map(r => {
+          sn++;
+          return `
+          <tr class="${r.IsOrphan ? 'orphan-row' : ''}" 
+              data-id="${r.CustomerID}" 
+              data-status-id="${r.StatusID}">
+
             <td><input type="checkbox" class="rowchk"></td>
-            <td>${r.CustCode||''}</td>
-            <td>${r.CustName||''}</td>
-            <td>${r.LevelType||''}</td>
-            <td>${r.ParentCustCode||'-'}</td>
-            <td>${r.ParentCustName||'-'}</td>
-            <td><span>${r.StatusName||'-'}</span>
-              ${(r.StatusTags||[]).map(t=>`<span class="badge text-bg-secondary ms-1">${t}</span>`).join('')}</td>
-            <td>${r.StatusDate||'-'}</td>
-            <td class="text-end">
+            <td>${sn}</td>
+            <td>${r.CustCode}</td>
+            <td class="ho-name text-primary">${r.CustName}</td>
+            <td>${r.TotalSellIn}</td>
+            <td>${r.TotalSellOut}</td>
+            <td>${r.StatusName || '-'}</td>
+            <td>${r.GoLiveDate || '-'}</td>
+            <td>${r.StatusDate || '-'}</td>
+            <td>
               <button class="btn btn-sm btn-outline-primary act-edit">Edit</button>
-              <button class="btn btn-sm btn-outline-secondary act-parent">Set Parent</button>
-              <button class="btn btn-sm btn-outline-danger act-del">Del</button>
             </td>
           </tr>
-        `).join('') || '<tr><td colspan="9" class="text-muted">No results.</td></tr>';
+          `;
+        }).join('');
+
         $tbody.html(rows);
         $('#pageInfo').text(`Showing page ${state.page} of ${Math.max(1, Math.ceil(state.total/state.pageSize))} — ${state.total} total`);
         renderPager($('#pager'), state, load);
@@ -244,40 +293,82 @@
   
   function openEdit(tr){
     const id = tr.data('id');
-    const tds = tr.children('td');
-    $('#cId').val(id);
-    $('#cCode').val(tds.eq(1).text());
-    $('#cName').val(tds.eq(2).text());
-    $('#cLevel').val(tds.eq(3).text());
-    $('#cStatusDate').val(tds.eq(7).text() === '-' ? '' : tds.eq(7).text());
-  
-    // Parent prefill
-    const pCode = tds.eq(4).text();
-    const pName = tds.eq(5).text();
-    $('#cParent').empty();
-    if(pCode && pCode !== '-' && pName && pName !== '-'){
-      const opt = new Option(`${pCode} — ${pName} (HO)`, '', true, true);
-      $('#cParent').append(opt);
-    }
-  
-    // Status prefill (id + text)
-    const sId = tr.data('status-id');
-    const sName = tds.eq(6).text();
-    $('#cStatus').empty();
-    if(sId && sName && sName !== '-'){
-      const opt = new Option(sName, String(sId), true, true);
-      $('#cStatus').append(opt).trigger('change');
-    } else {
-      $('#cStatus').val(null).trigger('change');
-    }
-  
-    dlg.show();
+
+    fetch(`/customer-mgmt/api/customers?q=&page=1&page_size=1&id=${id}`)
+      .then(r => r.json())
+      .then(j => {
+        const r = j.items.find(x => x.CustomerID === id);
+        if (!r) return alert('Failed to load customer');
+
+        $('#cId').val(r.CustomerID);
+        $('#cCode').val(r.CustCode);
+        $('#cName').val(r.CustName);
+        $('#cLevel').val(r.LevelType);
+        $('#cStatusDate').val(r.StatusDate || '');
+
+        $('#cParent').val(null).trigger('change'); // HO-only UI now
+        $('#cStatus').empty();
+        if (r.StatusName) {
+          const opt = new Option(r.StatusName, r.StatusID, true, true);
+          $('#cStatus').append(opt).trigger('change');
+        }
+
+        dlg.show();
+      });
   }
-  
+
 
   // Select2 for parents
   sel2HO($('#cParent'));
   sel2HO($('#bulkParent'));
+
+  // Branches modal
+  const dlgBranches = new bootstrap.Modal('#dlgBranches');
+
+  $tbody.on('click', '.ho-name', function () {
+    const hoId = $(this).closest('tr').data('id');
+
+    fetch(`/customer-mgmt/api/customers/${hoId}/branches`)
+      .then(r => r.json())
+      .then(j => {
+        $('#branchBody').html(j.items.map(b => `
+          <tr>
+            <td>${b.CustCode}</td>
+            <td>${b.CustName}</td>
+            <td>${b.StatusName || '-'}</td>
+            <td>
+              <button class="btn btn-sm btn-outline-danger act-remove-branch" data-id="${b.CustomerID}">
+                Remove
+              </button>
+            </td>
+          </tr>
+        `).join(''));
+        dlgBranches.show();
+      });
+  });
+
+  // Sorting
+  $('th button[data-sort]').on('click', function(){
+    state.sort = $(this).data('sort');
+    state.page = 1;
+    load();
+  });
+
+  $('#clearSort').on('click', ()=>{
+    state.sort = '';
+    load();
+  });
+
+  // Remove branch from HO
+  $('#branchBody').on('click', '.act-remove-branch', function(){
+    const cid = $(this).data('id');
+    fetch(`/customer-mgmt/api/customers/${cid}/set_parent`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ parent_id: null })
+    }).then(()=>load());
+  });
+
 
   // Add
   $('#btnAdd').on('click', openAdd);
